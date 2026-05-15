@@ -201,3 +201,78 @@ test('M7 ward toast renders inside #ward-toast', async ({ page }) => {
   });
   expect(visibleAfter).toBeGreaterThanOrEqual(1);
 });
+
+test('M7 hydrateFang rewires building.residents to fresh agent ids', async ({ page }) => {
+  await enterManageMode(page);
+  await clearWorld(page);
+  const out = await page.evaluate(() => {
+    const w = window.__ward;
+    w.fang.money = 999; w.fang.wood = 999; w.fang.labor = 99;
+    const r = w.placeWardBuilding('residence', 3, 3);
+    const oldResidents = r.rec.residents.slice();
+    const snap = w.serializeFang();
+    // Bump _nextId so hydrate's spawnAgent allocates ids that DON'T
+    // collide with the originals — exposes the stale-id bug.
+    w.fang._nextId += 100;
+    w.hydrateFang(snap);
+    const buildingId = Object.keys(w.fang.buildings)[0];
+    const newResidents = w.fang.buildings[buildingId].residents;
+    // All current resident ids must point to live agents.
+    const liveCount = newResidents.filter(id => !!w.fang.agents[id]).length;
+    return {
+      oldFirst: oldResidents[0],
+      newFirst: newResidents[0],
+      newCount: newResidents.length,
+      liveCount,
+    };
+  });
+  expect(out.newCount).toBe(2);
+  expect(out.liveCount).toBe(2);
+  // Sanity: old and new ids should be different (we bumped _nextId).
+  expect(out.oldFirst).not.toBe(out.newFirst);
+});
+
+test('M7 hydrateFang resets walking agents to idle (drops orphan walk state)', async ({ page }) => {
+  await enterManageMode(page);
+  await clearWorld(page);
+  const out = await page.evaluate(() => {
+    const w = window.__ward;
+    const a = w.spawnAgent({ role: 'resident', x: 0, z: 0 });
+    a.path = [[1, 0], [2, 0], [3, 0]];
+    a.pathIdx = 1;
+    a.state = 'walking';
+    const snap = w.serializeFang();
+    w.hydrateFang(snap);
+    const ids = Object.keys(w.fang.agents);
+    const restored = w.fang.agents[ids[0]];
+    return {
+      state: restored.state,
+      pathLen: restored.path && restored.path.length,
+      pathIdx: restored.pathIdx,
+    };
+  });
+  expect(out.state).toBe('idle');
+  expect(out.pathLen).toBe(0);
+  expect(out.pathIdx).toBe(0);
+});
+
+test('M7 hydrate then removeWardBuilding actually despawns rehydrated residents', async ({ page }) => {
+  await enterManageMode(page);
+  await clearWorld(page);
+  const out = await page.evaluate(() => {
+    const w = window.__ward;
+    w.fang.money = 999; w.fang.wood = 999; w.fang.labor = 99;
+    const r = w.placeWardBuilding('residence', 3, 3);
+    const snap = w.serializeFang();
+    // Force fresh ids on hydrate.
+    w.fang._nextId += 100;
+    w.hydrateFang(snap);
+    const buildingId = Object.keys(w.fang.buildings)[0];
+    const beforeRemove = Object.keys(w.fang.agents).length;
+    w.removeWardBuilding(buildingId);
+    const afterRemove = Object.keys(w.fang.agents).length;
+    return { beforeRemove, afterRemove };
+  });
+  expect(out.beforeRemove).toBe(2);
+  expect(out.afterRemove).toBe(0);
+});

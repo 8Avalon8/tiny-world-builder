@@ -17511,6 +17511,15 @@
     }
     // Rehydrate agents — rebuild mesh + materials from role/x/z.
     if (snapshot.agents && typeof spawnAgent === 'function') {
+      // Wipe rec.residents on every restored building first. Saved residents
+      // arrays hold pre-hydration agent ids, but spawnAgent always allocates
+      // fresh ids from fang._nextId; without this, removeWardBuilding →
+      // despawnBuildingAgents would iterate stale ids and leave the live
+      // agents leaked, eventually saturating BALANCE.agents.max.
+      for (const bid in fang.buildings) {
+        const b = fang.buildings[bid];
+        if (b) b.residents = [];
+      }
       for (const id in snapshot.agents) {
         const a = snapshot.agents[id];
         if (!a) continue;
@@ -17519,19 +17528,36 @@
         // mesh stays consistent with the runtime objects.
         fresh.fx = a.fx != null ? a.fx : fresh.x;
         fresh.fz = a.fz != null ? a.fz : fresh.z;
-        fresh.state = a.state || 'idle';
+        // Path is intentionally dropped — assignIdleTargets picks a fresh
+        // target on the next sim minute. Force state back to 'idle' (and
+        // clear path/pathIdx/target) so an agent saved mid-walk doesn't
+        // get rehydrated as state='walking' with no path, which would
+        // make agentStep skip movement AND assignIdleTargets skip the
+        // agent forever (it only re-targets idle agents).
+        fresh.state = 'idle';
+        fresh.path = [];
+        fresh.pathIdx = 0;
+        fresh.target = null;
         fresh.home = a.home || null;
         fresh.work = a.work || null;
         fresh.spawnDay = a.spawnDay || fang.day;
         fresh.leaveDay = a.leaveDay || null;
         // Brain/visitor state — without these, restored pilgrims become
-        // permanent residents and reapVisitors never finds them. Path
-        // itself is intentionally dropped: assignIdleTargets picks a
-        // fresh target on the next sim minute.
+        // permanent residents and reapVisitors never finds them.
         fresh._visitor     = !!a._visitor;
         fresh._heading_out = !!a._heading_out;
         fresh._magnet      = a._magnet || null;
         fresh._lastBrainAt = a._lastBrainAt != null ? a._lastBrainAt : null;
+        // Rewire this agent's home building's residents list to the fresh
+        // id so removeWardBuilding / despawnBuildingAgents finds them.
+        // Visitors (no buildingId) are intentionally not tracked here.
+        if (fresh.home && fresh.home.buildingId) {
+          const b = fang.buildings[fresh.home.buildingId];
+          if (b) {
+            b.residents = Array.isArray(b.residents) ? b.residents : [];
+            b.residents.push(fresh.id);
+          }
+        }
       }
     }
     // Restore body class / mode toggle label without firing extra events.
