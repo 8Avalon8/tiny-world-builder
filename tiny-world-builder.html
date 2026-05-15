@@ -2834,6 +2834,76 @@
     .tool kbd { display: none; }
   }
   html.ai-disabled [data-ai-interface] { display: none !important; }
+
+  /* -------- ward (Chang'an fang) management mode UI -------- */
+  /* Hide editing-only toolbar groups when in management mode. */
+  body.mode-manage .toolbar .tool-group-btn[data-group="terrain"],
+  body.mode-manage .toolbar .tool-group-btn[data-group="plants"],
+  body.mode-manage .toolbar .tool-group-btn[data-group="build"],
+  body.mode-manage .toolbar .tool-group-btn[data-group="infra"],
+  body.mode-manage .toolbar .tool-group-btn[data-group="farm"],
+  body.mode-manage .toolbar .tool-group-btn[data-group="life"] { display: none !important; }
+  /* Ward UI panels — hidden by default, shown in manage mode.
+     Modals (#ward-event-modal, #ward-info, #ward-policy, #ward-petitions,
+     #ward-residents) rely on the [hidden] attribute (HTML default) instead
+     of display:none rules so they can be shown in ANY mode by clearing
+     their hidden flag — useful for popping a forced event in tests. */
+  #ward-hud, #ward-catalog { display: none; }
+  body.mode-manage #ward-hud { display: flex; }
+  body.mode-manage #ward-catalog { display: flex; }
+  /* HUD strip — top center, between controls and toolbar */
+  #ward-hud {
+    position: fixed; top: 14px; left: 50%; transform: translateX(-50%);
+    background: var(--panel); color: var(--ink);
+    border: 1px solid var(--line); border-radius: 14px;
+    padding: 8px 14px; gap: 12px; align-items: center;
+    font-family: inherit; font-size: 12px; font-weight: 600;
+    box-shadow: 0 4px 18px rgba(0,0,0,0.08);
+    z-index: 40; pointer-events: auto;
+  }
+  #ward-hud .stat { display: inline-flex; gap: 4px; align-items: center; }
+  #ward-hud .stat-label { color: var(--muted, #7a7268); font-weight: 500; }
+  #ward-hud .stat-value { color: var(--ink); font-variant-numeric: tabular-nums; }
+  #ward-hud .stat-sep { width: 1px; height: 14px; background: var(--line); }
+  /* Catalog rail — right side, vertical stack of building cards */
+  #ward-catalog {
+    position: fixed; right: 14px; top: 80px; bottom: 120px;
+    width: 230px; flex-direction: column; gap: 6px;
+    background: var(--panel); color: var(--ink);
+    border: 1px solid var(--line); border-radius: 14px;
+    padding: 10px; overflow-y: auto;
+    box-shadow: 0 4px 18px rgba(0,0,0,0.08);
+    z-index: 40; font-family: inherit; font-size: 12px;
+  }
+  #ward-catalog .catalog-title {
+    font-weight: 700; font-size: 13px; margin-bottom: 4px;
+    padding-bottom: 6px; border-bottom: 1px solid var(--line);
+  }
+  #ward-catalog .catalog-empty {
+    color: var(--muted, #7a7268); font-size: 11.5px; font-style: italic;
+    padding: 8px 4px;
+  }
+  #ward-catalog .catalog-item {
+    display: flex; flex-direction: column; gap: 2px;
+    padding: 7px 9px; border-radius: 9px;
+    border: 1px solid transparent; background: transparent;
+    color: var(--ink); cursor: pointer; text-align: left;
+    font-family: inherit; font-size: 12px;
+  }
+  #ward-catalog .catalog-item:hover { background: rgba(0,0,0,0.04); border-color: var(--line); }
+  #ward-catalog .catalog-item.selected { background: rgba(58,114,200,0.12); border-color: var(--accent); }
+  #ward-catalog .catalog-item.disabled { opacity: 0.45; cursor: not-allowed; }
+  #ward-catalog .catalog-name { font-weight: 600; }
+  #ward-catalog .catalog-cost { font-size: 10.5px; color: var(--muted, #7a7268); }
+  /* Mode toggle pill — distinct from regular icon buttons */
+  #mode-toggle.mode-pill {
+    width: auto; padding: 0 12px; min-width: 78px;
+    font-weight: 600; font-size: 11.5px;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  body.mode-manage #mode-toggle.mode-pill { background: var(--accent); color: #fff; border-color: var(--accent); }
+  /* Deep-night overlay tint (ward-only; does not replace tod-night). */
+  body.fang-deepnight #ward-hud { box-shadow: 0 4px 18px rgba(50,30,80,0.18); }
 </style>
 <script type="text/javascript">
   // AI interfaces are a dev/flagged feature. Production hosts default to no
@@ -3087,6 +3157,10 @@
     </button>
     <button class="btn icon" id="dev-mode" data-tooltip="Developer overlay (`)" aria-label="Developer overlay">
       <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+    </button>
+    <button class="btn icon mode-pill" id="mode-toggle" data-tooltip="Switch between editor and Chang'an ward management" aria-label="Toggle ward management mode">
+      <svg viewBox="0 0 24 24" aria-hidden="true" width="16" height="16"><path d="M3 21V8l9-6 9 6v13"/><path d="M9 21v-7h6v7"/></svg>
+      <span id="mode-toggle-label">编辑</span>
     </button>
     <button class="btn icon" id="reset" data-tooltip="Reset world" aria-label="Reset world">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
@@ -3613,6 +3687,37 @@
     <button type="submit" class="agent-send" id="agent-send" aria-label="Send to agent">↑</button>
     <div id="agent-suggestions" class="agent-suggestions" role="listbox" aria-label="Suggested prompts" hidden></div>
   </form>
+
+  <!-- Ward (Chang'an fang) management mode UI — visibility driven by body.mode-manage -->
+  <aside id="ward-hud" aria-label="Ward resources HUD">
+    <span class="stat"><span class="stat-label">钱</span><span class="stat-value" id="ward-stat-money">0</span></span>
+    <span class="stat-sep"></span>
+    <span class="stat"><span class="stat-label">劳</span><span class="stat-value" id="ward-stat-labor">0</span></span>
+    <span class="stat-sep"></span>
+    <span class="stat"><span class="stat-label">木</span><span class="stat-value" id="ward-stat-wood">0</span></span>
+    <span class="stat-sep"></span>
+    <span class="stat"><span class="stat-label">布</span><span class="stat-value" id="ward-stat-cloth">0</span></span>
+    <span class="stat-sep"></span>
+    <span class="stat"><span class="stat-label">民心</span><span class="stat-value" id="ward-stat-morale">0</span></span>
+    <span class="stat-sep"></span>
+    <span class="stat"><span class="stat-label">治</span><span class="stat-value" id="ward-stat-order">0</span></span>
+    <span class="stat-sep"></span>
+    <span class="stat"><span class="stat-label">声</span><span class="stat-value" id="ward-stat-fame">0</span></span>
+    <span class="stat-sep"></span>
+    <span class="stat"><span class="stat-label">天</span><span class="stat-value" id="ward-stat-day">1</span></span>
+    <span class="stat-sep"></span>
+    <span class="stat"><span class="stat-label" id="ward-stat-phase">晨</span></span>
+  </aside>
+  <aside id="ward-catalog" aria-label="Ward building catalog">
+    <div class="catalog-title">营造目录</div>
+    <div class="catalog-empty" id="ward-catalog-empty">（建筑目录尚未启用）</div>
+    <div id="ward-catalog-list" role="listbox" aria-label="Available buildings"></div>
+  </aside>
+  <div id="ward-info" class="modal-card" role="dialog" aria-labelledby="ward-info-title" hidden></div>
+  <div id="ward-event-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="ward-event-title" hidden></div>
+  <div id="ward-policy" class="modal-card" role="dialog" aria-labelledby="ward-policy-title" hidden></div>
+  <div id="ward-petitions" class="modal-card" role="dialog" aria-labelledby="ward-petitions-title" hidden></div>
+  <div id="ward-residents" class="modal-card" role="dialog" aria-labelledby="ward-residents-title" hidden></div>
 
   <div class="toolbar" id="toolbar"></div>
   <div class="flyout" id="flyout" hidden></div>
@@ -4416,6 +4521,24 @@
 
     hover:     new THREE.MeshBasicMaterial({ color: 0x2a2722, transparent: true, opacity: 0.18, depthWrite: false }),
     hoverErase:new THREE.MeshBasicMaterial({ color: 0xb84838, transparent: true, opacity: 0.28, depthWrite: false }),
+
+    // Tang-dynasty Chang'an ward palette (青瓦/夯土/朱漆/纸窗).
+    // Reused by ward building factories and agent meshes. Per-instance
+    // color variants MUST clone() first — never mutate these in place.
+    tangTile:     new THREE.MeshLambertMaterial({ color: 0x4a3a2a }),
+    tangTileDk:   new THREE.MeshLambertMaterial({ color: 0x2e231a }),
+    mudBrick:     new THREE.MeshLambertMaterial({ color: 0xcca97a }),
+    mudBrickDk:   new THREE.MeshLambertMaterial({ color: 0xa9885d }),
+    redLacquer:   new THREE.MeshLambertMaterial({ color: 0xb02a1f }),
+    redLacquerDk: new THREE.MeshLambertMaterial({ color: 0x802018 }),
+    lanternRed:   new THREE.MeshLambertMaterial({ color: 0xd64236 }),
+    flagYellow:   new THREE.MeshLambertMaterial({ color: 0xd8b34a }),
+    stoneStep:    new THREE.MeshLambertMaterial({ color: 0xa9a39a }),
+    paperWindow:  new THREE.MeshLambertMaterial({ color: 0xf2e6c8 }),
+    // Agent meshes — body/head clone these per agent for role tinting.
+    tangCloth:    new THREE.MeshLambertMaterial({ color: 0xdcc8a8 }),
+    skinTang:     new THREE.MeshLambertMaterial({ color: 0xe8c8a8 }),
+    monkRobe:     new THREE.MeshLambertMaterial({ color: 0xa05a2a }),
   };
 
   const SEASON_FOLIAGE = {
@@ -6708,6 +6831,1055 @@
     return g;
   }
 
+  // -------- ward primitives (Tang) --------
+  // Reusable mesh helpers for Tang-dynasty Chang'an ward buildings.
+  // All return THREE.Mesh or THREE.Group; callers position them. Shared
+  // materials M.* are reused as-is (NEVER mutate in place). For per-instance
+  // color tweaks, callers must mat.clone() first.
+  const WardParts = {
+    // Hipped Tang tile roof spanning (w × d) at base height y0, rising by r.
+    // Slight upturned eaves are stylized by a small cap above the base ring.
+    tileRoof(w, d, r, y0 = 0) {
+      const g = new THREE.Group();
+      // Underlying ring of eaves — slightly wider than the roof base
+      const eaves = new THREE.Mesh(
+        new THREE.BoxGeometry(w + 0.18, 0.04, d + 0.18),
+        M.tangTileDk,
+      );
+      eaves.position.set(0, y0 + 0.02, 0);
+      g.add(eaves);
+      // Pyramidal hipped roof body
+      const halfW = w / 2, halfD = d / 2;
+      const verts = new Float32Array([
+        0, y0 + r, 0,
+        -halfW, y0 + 0.04, -halfD,
+         halfW, y0 + 0.04, -halfD,
+         halfW, y0 + 0.04,  halfD,
+        -halfW, y0 + 0.04,  halfD,
+      ]);
+      const idx = new Uint16Array([
+        0, 2, 1,  0, 3, 2,  0, 4, 3,  0, 1, 4,
+      ]);
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(verts, 3));
+      geo.setIndex(new THREE.BufferAttribute(idx, 1));
+      geo.computeVertexNormals();
+      g.add(new THREE.Mesh(geo, M.tangTile));
+      return g;
+    },
+    // Two-slope (pitched) Tang tile roof spanning (w × d) at base y0 rising by r.
+    // Ridge along the longer side automatic: if w >= d, ridge runs along x.
+    pitchedTileRoof(w, d, r, y0 = 0) {
+      const g = new THREE.Group();
+      const eaves = new THREE.Mesh(
+        new THREE.BoxGeometry(w + 0.18, 0.04, d + 0.18),
+        M.tangTileDk,
+      );
+      eaves.position.set(0, y0 + 0.02, 0);
+      g.add(eaves);
+      const ridgeAlongX = w >= d;
+      const halfW = w / 2, halfD = d / 2;
+      let verts;
+      if (ridgeAlongX) {
+        verts = new Float32Array([
+          -halfW, y0 + r, 0,        // 0 west apex
+           halfW, y0 + r, 0,        // 1 east apex
+          -halfW, y0 + 0.04, -halfD,// 2 NW
+           halfW, y0 + 0.04, -halfD,// 3 NE
+           halfW, y0 + 0.04,  halfD,// 4 SE
+          -halfW, y0 + 0.04,  halfD,// 5 SW
+        ]);
+      } else {
+        verts = new Float32Array([
+          0, y0 + r, -halfD,        // 0 north apex
+          0, y0 + r,  halfD,        // 1 south apex
+          -halfW, y0 + 0.04, -halfD,// 2 NW
+           halfW, y0 + 0.04, -halfD,// 3 NE
+           halfW, y0 + 0.04,  halfD,// 4 SE
+          -halfW, y0 + 0.04,  halfD,// 5 SW
+        ]);
+      }
+      const idx = ridgeAlongX
+        ? new Uint16Array([
+            0, 5, 2,   // west gable
+            1, 3, 4,   // east gable
+            0, 2, 3,  0, 3, 1, // north slope
+            1, 4, 5,  1, 5, 0, // south slope
+          ])
+        : new Uint16Array([
+            0, 2, 3,   // north gable
+            1, 5, 4,   // south gable -- ccw for outward
+            0, 3, 4,  0, 4, 1, // east slope
+            1, 5, 2,  1, 2, 0, // west slope
+          ]);
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(verts, 3));
+      geo.setIndex(new THREE.BufferAttribute(idx, 1));
+      geo.computeVertexNormals();
+      g.add(new THREE.Mesh(geo, M.tangTile));
+      return g;
+    },
+    // Vertical red-lacquer column. Height h, radius optional (default 0.045).
+    lacquerColumn(h, r = 0.05) {
+      const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 8), M.redLacquer);
+      m.position.y = h / 2;
+      return m;
+    },
+    // Well stone shaft — sunken cylinder + dark inner hole.
+    wellShaft(d = 0.36) {
+      const g = new THREE.Group();
+      const ring = new THREE.Mesh(new THREE.CylinderGeometry(d / 2, d / 2, 0.18, 12), M.stoneStep);
+      ring.position.y = 0.09;
+      g.add(ring);
+      const inner = new THREE.Mesh(new THREE.CylinderGeometry(d / 2 - 0.04, d / 2 - 0.04, 0.12, 12), M.tangTileDk);
+      inner.position.y = 0.14;
+      g.add(inner);
+      return g;
+    },
+    // Loom frame — two vertical wooden frames bridged by a horizontal beam.
+    loomFrame() {
+      const g = new THREE.Group();
+      const post = new THREE.BoxGeometry(0.04, 0.45, 0.04);
+      const lp = new THREE.Mesh(post, M.woodTrim);
+      lp.position.set(-0.22, 0.225, 0);
+      g.add(lp);
+      const rp = new THREE.Mesh(post, M.woodTrim);
+      rp.position.set( 0.22, 0.225, 0);
+      g.add(rp);
+      const top = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.05, 0.06), M.woodTrim);
+      top.position.set(0, 0.46, 0);
+      g.add(top);
+      // Stretched cloth panel
+      const cloth = new THREE.Mesh(new THREE.BoxGeometry(0.40, 0.34, 0.02), M.paperWindow);
+      cloth.position.set(0, 0.26, 0);
+      g.add(cloth);
+      return g;
+    },
+  };
+
+  // -------- ward building factories --------
+  // Each factory returns a THREE.Group with:
+  //   userData.kind = 'fangBuilding'
+  //   userData.buildingType = 'residence' | 'centralWell' | 'loomShed' | ...
+  // Origin = footprint geometric center (renderCellObject places the mesh).
+  // All factories end with castReceive(g) so shadows and culling work.
+
+  function makeFangWell() {
+    const g = new THREE.Group();
+    // Stone rim and shaft
+    g.add(WardParts.wellShaft(0.42));
+    // 4 corner posts
+    const postPositions = [[-0.18, -0.18], [0.18, -0.18], [-0.18, 0.18], [0.18, 0.18]];
+    for (const [x, z] of postPositions) {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.55, 0.05), M.redLacquer);
+      post.position.set(x, 0.275, z);
+      g.add(post);
+    }
+    // Crossbar with bucket rope
+    const beam = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.05, 0.06), M.woodTrim);
+    beam.position.set(0, 0.56, 0);
+    g.add(beam);
+    const rope = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.18, 5), M.mudBrickDk);
+    rope.position.set(0, 0.45, 0);
+    g.add(rope);
+    const bucket = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.08, 8), M.woodTrim);
+    bucket.position.set(0, 0.36, 0);
+    g.add(bucket);
+    // Small canopy roof at top (Tang tile)
+    const canopy = WardParts.tileRoof(0.6, 0.6, 0.16, 0.6);
+    g.add(canopy);
+    g.userData = { kind: 'fangBuilding', buildingType: 'centralWell', materials: [] };
+    castReceive(g);
+    return g;
+  }
+
+  function makeFangResidence() {
+    const g = new THREE.Group();
+    // Mud-brick walls — single block under the roof
+    const walls = new THREE.Mesh(new THREE.BoxGeometry(0.78, 0.4, 0.7), M.mudBrick);
+    walls.position.y = 0.2;
+    g.add(walls);
+    // Lower stone foundation slab
+    const base = new THREE.Mesh(new THREE.BoxGeometry(0.86, 0.06, 0.78), M.stoneStep);
+    base.position.y = 0.03;
+    g.add(base);
+    // Pitched tile roof (ridge along x — longer side)
+    const roof = WardParts.pitchedTileRoof(0.92, 0.74, 0.32, 0.4);
+    g.add(roof);
+    // Red-lacquer door, on +z face
+    const door = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.30, 0.02), M.redLacquer);
+    door.position.set(0, 0.17, 0.36);
+    g.add(door);
+    // Door frame
+    const frame = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.34, 0.04), M.woodTrim);
+    frame.position.set(0, 0.18, 0.355);
+    g.add(frame);
+    // Paper windows — left and right of door
+    const winL = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.14, 0.02), M.paperWindow);
+    winL.position.set(-0.26, 0.28, 0.36);
+    g.add(winL);
+    const winR = winL.clone();
+    winR.position.set(0.26, 0.28, 0.36);
+    g.add(winR);
+    g.userData = { kind: 'fangBuilding', buildingType: 'residence', materials: [] };
+    castReceive(g);
+    return g;
+  }
+
+  // 2×1 footprint along +x. Mesh centered at footprint geometric center
+  // (renderCellObject offsets by +0.5 on the long axis).
+  function makeFangLoom() {
+    const g = new THREE.Group();
+    // Total spans 1.9 × 0.85 (slightly inset from 2×1)
+    const W = 1.9, D = 0.85;
+    // Foundation
+    const base = new THREE.Mesh(new THREE.BoxGeometry(W - 0.05, 0.05, D - 0.05), M.stoneStep);
+    base.position.y = 0.025;
+    g.add(base);
+    // 6 lacquer columns along the perimeter
+    const colH = 0.55;
+    const cols = [
+      [-W / 2 + 0.12, -D / 2 + 0.12], [0, -D / 2 + 0.12], [ W / 2 - 0.12, -D / 2 + 0.12],
+      [-W / 2 + 0.12,  D / 2 - 0.12], [0,  D / 2 - 0.12], [ W / 2 - 0.12,  D / 2 - 0.12],
+    ];
+    for (const [x, z] of cols) {
+      const c = WardParts.lacquerColumn(colH);
+      c.position.set(x, c.position.y, z);
+      g.add(c);
+    }
+    // Pitched tile roof spanning the 2×1
+    const roof = WardParts.pitchedTileRoof(W + 0.1, D + 0.1, 0.28, colH);
+    g.add(roof);
+    // Loom in the center
+    g.add(WardParts.loomFrame());
+    // Basket of cloth on the side
+    const basket = new THREE.Mesh(new THREE.CylinderGeometry(0.10, 0.13, 0.12, 8), M.woodTrim);
+    basket.position.set(W / 2 - 0.3, 0.06, 0);
+    g.add(basket);
+    const cloth = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.06, 0.10), M.flagYellow);
+    cloth.position.set(W / 2 - 0.3, 0.15, 0);
+    g.add(cloth);
+    g.userData = { kind: 'fangBuilding', buildingType: 'loomShed', materials: [] };
+    castReceive(g);
+    return g;
+  }
+
+  // 1×1 香铺 — open-front incense shop with lanterns + hanging racks.
+  function makeFangIncenseShop() {
+    const g = new THREE.Group();
+    // Foundation
+    const base = new THREE.Mesh(new THREE.BoxGeometry(0.86, 0.06, 0.78), M.stoneStep);
+    base.position.y = 0.03;
+    g.add(base);
+    // Back wall
+    const back = new THREE.Mesh(new THREE.BoxGeometry(0.78, 0.40, 0.10), M.mudBrick);
+    back.position.set(0, 0.20, -0.34);
+    g.add(back);
+    // Side walls (partial)
+    const sideL = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.40, 0.50), M.mudBrick);
+    sideL.position.set(-0.36, 0.20, -0.10);
+    g.add(sideL);
+    const sideR = sideL.clone();
+    sideR.position.x = 0.36;
+    g.add(sideR);
+    // Counter — front face open
+    const counter = new THREE.Mesh(new THREE.BoxGeometry(0.78, 0.14, 0.12), M.woodTrim);
+    counter.position.set(0, 0.13, 0.30);
+    g.add(counter);
+    // Roof
+    const roof = WardParts.pitchedTileRoof(0.92, 0.74, 0.30, 0.40);
+    g.add(roof);
+    // Two hanging lanterns
+    const lan1 = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), M.lanternRed);
+    lan1.position.set(-0.26, 0.50, 0.28);
+    g.add(lan1);
+    const lan2 = lan1.clone();
+    lan2.position.x = 0.26;
+    g.add(lan2);
+    // Incense rack — 3 thin sticks on the back wall
+    for (let i = 0; i < 3; i++) {
+      const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.32, 5), M.knob);
+      stick.position.set(-0.18 + i * 0.18, 0.32, -0.26);
+      g.add(stick);
+    }
+    g.userData = { kind: 'fangBuilding', buildingType: 'incenseShop', materials: [] };
+    castReceive(g);
+    return g;
+  }
+
+  // 1×2 坊正所 — administrative office, linear footprint with flagpole.
+  function makeFangAdminOffice() {
+    const g = new THREE.Group();
+    const W = 0.92, D = 1.90;
+    // Foundation
+    const base = new THREE.Mesh(new THREE.BoxGeometry(W, 0.06, D - 0.05), M.stoneStep);
+    base.position.y = 0.03;
+    g.add(base);
+    // Walls
+    const walls = new THREE.Mesh(new THREE.BoxGeometry(W - 0.08, 0.45, D - 0.18), M.mudBrick);
+    walls.position.y = 0.22;
+    g.add(walls);
+    // Door on +z gable
+    const door = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.36, 0.04), M.redLacquer);
+    door.position.set(0, 0.18, D / 2 - 0.08);
+    g.add(door);
+    // Roof — pitched along z axis (long side)
+    const roof = WardParts.pitchedTileRoof(W + 0.10, D, 0.28, 0.45);
+    g.add(roof);
+    // Flagpole + yellow flag on the side
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 1.0, 6), M.woodTrim);
+    pole.position.set(W / 2 + 0.08, 0.50, -0.40);
+    g.add(pole);
+    const flag = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.20, 0.22), M.flagYellow);
+    flag.position.set(W / 2 + 0.20, 0.90, -0.40);
+    g.add(flag);
+    // Step in front of door
+    const step = new THREE.Mesh(new THREE.BoxGeometry(0.40, 0.04, 0.10), M.stoneStep);
+    step.position.set(0, 0.02, D / 2 - 0.02);
+    g.add(step);
+    g.userData = { kind: 'fangBuilding', buildingType: 'fangAdmin', materials: [] };
+    castReceive(g);
+    return g;
+  }
+
+  // 2×2 客舍 — two-story inn with corner lanterns.
+  function makeFangInn() {
+    const g = new THREE.Group();
+    const W = 1.80, D = 1.80;
+    // Foundation
+    const base = new THREE.Mesh(new THREE.BoxGeometry(W, 0.06, D), M.stoneStep);
+    base.position.y = 0.03;
+    g.add(base);
+    // First floor walls
+    const wall1 = new THREE.Mesh(new THREE.BoxGeometry(W - 0.08, 0.50, D - 0.08), M.mudBrick);
+    wall1.position.y = 0.25;
+    g.add(wall1);
+    // Floor break — intermediate tile band
+    const band = new THREE.Mesh(new THREE.BoxGeometry(W + 0.04, 0.04, D + 0.04), M.tangTileDk);
+    band.position.y = 0.52;
+    g.add(band);
+    // Second floor (slightly inset)
+    const wall2 = new THREE.Mesh(new THREE.BoxGeometry(W - 0.18, 0.40, D - 0.18), M.mudBrick);
+    wall2.position.y = 0.74;
+    g.add(wall2);
+    // Roof
+    const roof = WardParts.tileRoof(W - 0.05, D - 0.05, 0.36, 0.94);
+    g.add(roof);
+    // Front door
+    const door = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.36, 0.04), M.redLacquer);
+    door.position.set(0, 0.20, D / 2 - 0.03);
+    g.add(door);
+    // 4 corner lanterns
+    const lanternPos = [
+      [-W / 2 + 0.06, D / 2 - 0.06], [ W / 2 - 0.06, D / 2 - 0.06],
+      [-W / 2 + 0.06, -D / 2 + 0.06], [ W / 2 - 0.06, -D / 2 + 0.06],
+    ];
+    for (const [lx, lz] of lanternPos) {
+      const lan = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 6), M.lanternRed);
+      lan.position.set(lx, 0.62, lz);
+      g.add(lan);
+    }
+    // Banner over door
+    const banner = new THREE.Mesh(new THREE.BoxGeometry(0.30, 0.10, 0.04), M.flagYellow);
+    banner.position.set(0, 0.46, D / 2 - 0.02);
+    g.add(banner);
+    g.userData = { kind: 'fangBuilding', buildingType: 'inn', materials: [] };
+    castReceive(g);
+    return g;
+  }
+
+  // 2×2 达官府邸 — noble manor with podium, main hall, and entry gate.
+  function makeFangNobleManor() {
+    const g = new THREE.Group();
+    const W = 1.80, D = 1.80;
+    // Wide podium
+    const podium = new THREE.Mesh(new THREE.BoxGeometry(W + 0.05, 0.14, D + 0.05), M.stoneStep);
+    podium.position.y = 0.07;
+    g.add(podium);
+    // Main hall raised on podium — red-lacquer columns under hipped roof
+    const wallH = 0.50;
+    // 4 columns at corners of the main hall
+    const colHall = [
+      [-W / 2 + 0.20, -D / 2 + 0.20], [ W / 2 - 0.20, -D / 2 + 0.20],
+      [-W / 2 + 0.20,  D / 2 - 0.20], [ W / 2 - 0.20,  D / 2 - 0.20],
+    ];
+    for (const [cx, cz] of colHall) {
+      const col = WardParts.lacquerColumn(wallH, 0.06);
+      col.position.set(cx, col.position.y + 0.14, cz);
+      g.add(col);
+    }
+    // Mid-column for stability look
+    const midColPos = [[0, -D / 2 + 0.20], [0, D / 2 - 0.20]];
+    for (const [cx, cz] of midColPos) {
+      const col = WardParts.lacquerColumn(wallH, 0.06);
+      col.position.set(cx, col.position.y + 0.14, cz);
+      g.add(col);
+    }
+    // Wall panels (between columns, on north/south sides only)
+    const panelN = new THREE.Mesh(new THREE.BoxGeometry(W - 0.32, wallH - 0.06, 0.06), M.mudBrick);
+    panelN.position.set(0, 0.14 + (wallH - 0.06) / 2, -D / 2 + 0.20);
+    g.add(panelN);
+    // Hipped tile roof — large overhang
+    const roof = WardParts.tileRoof(W + 0.20, D + 0.20, 0.42, 0.14 + wallH);
+    g.add(roof);
+    // Calligraphy plaque above entrance
+    const plaque = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.16, 0.04), M.flagYellow);
+    plaque.position.set(0, 0.14 + wallH + 0.05, D / 2 + 0.02);
+    g.add(plaque);
+    // Side gate — 2 small columns + lintel at +z edge
+    const gateCol1 = WardParts.lacquerColumn(0.35, 0.05);
+    gateCol1.position.set(-0.18, gateCol1.position.y + 0.14, D / 2 + 0.10);
+    g.add(gateCol1);
+    const gateCol2 = WardParts.lacquerColumn(0.35, 0.05);
+    gateCol2.position.set(0.18, gateCol2.position.y + 0.14, D / 2 + 0.10);
+    g.add(gateCol2);
+    const gateLintel = new THREE.Mesh(new THREE.BoxGeometry(0.50, 0.06, 0.10), M.redLacquerDk);
+    gateLintel.position.set(0, 0.14 + 0.36, D / 2 + 0.10);
+    g.add(gateLintel);
+    g.userData = { kind: 'fangBuilding', buildingType: 'nobleManor', materials: [] };
+    castReceive(g);
+    return g;
+  }
+
+  // 2×2 慈灯寺 — three-tier pagoda with surrounding low wall.
+  function makeFangCiDeng() {
+    const g = new THREE.Group();
+    const W = 1.80, D = 1.80;
+    // Foundation
+    const base = new THREE.Mesh(new THREE.BoxGeometry(W, 0.08, D), M.stoneStep);
+    base.position.y = 0.04;
+    g.add(base);
+    // Low surrounding wall (decorative, 4 sides)
+    function lowWall(x, z, w, d) {
+      const wall = new THREE.Mesh(new THREE.BoxGeometry(w, 0.18, d), M.mudBrickDk);
+      wall.position.set(x, 0.09 + 0.08, z);
+      g.add(wall);
+    }
+    lowWall(0, -D / 2 + 0.04, W - 0.10, 0.08);
+    lowWall(0,  D / 2 - 0.04, W - 0.10, 0.08);
+    lowWall(-W / 2 + 0.04, 0, 0.08, D - 0.18);
+    lowWall( W / 2 - 0.04, 0, 0.08, D - 0.18);
+    // Tier 1 — wide red base
+    const tier1 = new THREE.Mesh(new THREE.BoxGeometry(0.80, 0.30, 0.80), M.redLacquer);
+    tier1.position.y = 0.08 + 0.30;
+    g.add(tier1);
+    // Tier 1 roof
+    const roof1 = WardParts.tileRoof(0.95, 0.95, 0.16, 0.38);
+    g.add(roof1);
+    // Tier 2 — slightly smaller
+    const tier2 = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.26, 0.62), M.redLacquer);
+    tier2.position.y = 0.62 + 0.13;
+    g.add(tier2);
+    const roof2 = WardParts.tileRoof(0.78, 0.78, 0.13, 0.75);
+    g.add(roof2);
+    // Tier 3 — top, narrow
+    const tier3 = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.20, 0.46), M.redLacquer);
+    tier3.position.y = 0.88 + 0.10;
+    g.add(tier3);
+    const roof3 = WardParts.tileRoof(0.60, 0.60, 0.12, 0.98);
+    g.add(roof3);
+    // Finial — spire on top
+    const spireBall = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8), M.flagYellow);
+    spireBall.position.y = 1.10 + 0.04;
+    g.add(spireBall);
+    const spire = new THREE.Mesh(new THREE.ConeGeometry(0.025, 0.20, 6), M.tangTileDk);
+    spire.position.y = 1.10 + 0.20;
+    g.add(spire);
+    // Doors on each cardinal face of the base tier (lower-tier prayer hall)
+    const doorPositions = [
+      [0, 0,  0.40 + 0.001], // south
+      [0, 0, -0.40 - 0.001], // north
+    ];
+    for (const [dx, dy, dz] of doorPositions) {
+      const door = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.24, 0.02), M.tangTileDk);
+      door.position.set(dx, 0.20 + dy, dz);
+      g.add(door);
+    }
+    g.userData = { kind: 'fangBuilding', buildingType: 'ciDengTemple', materials: [] };
+    castReceive(g);
+    return g;
+  }
+
+  // 1×1 坊门 — exposed as a factory for the catalog. The mesh wraps
+  // makeFangGateMesh because BUILDING_CATALOG.factory is invoked with a
+  // (level) arg; gate orientation is set by neighbours at render time.
+  function makeFangGateBuildingMesh() {
+    return makeFangGateMesh('x');
+  }
+
+  // -------- ward walls + gates --------
+  // Tang dynasty ward walls (mud-brick + tile cap, no crenellations) and
+  // gates (red-lacquer columns + tiled cap, open path beneath). Adjacency
+  // is independent from fence/castle wall — different kinds, parallel walker.
+  function makeFangWallSegment(neighbors) {
+    const g = new THREE.Group();
+    const wallH = 0.45;
+    const wallT = 0.16;
+    const GATE_OVERRUN = 0.20; // extends past cell boundary into gate cell
+
+    function makeSeg(dir, kind) {
+      if (!kind) return;
+      const gate = (kind === 'gate');
+      const farEnd = 0.50 + (gate ? GATE_OVERRUN : 0);
+      const segLen = farEnd;
+      const segCentre = farEnd / 2;
+      const segs = g.userData._segs || (g.userData._segs = []);
+      if (dir === 'n') segs.push({ axis: 'z', x: 0, z: -segCentre, w: wallT,  d: segLen });
+      if (dir === 's') segs.push({ axis: 'z', x: 0, z:  segCentre, w: wallT,  d: segLen });
+      if (dir === 'w') segs.push({ axis: 'x', x: -segCentre, z: 0, w: segLen, d: wallT });
+      if (dir === 'e') segs.push({ axis: 'x', x:  segCentre, z: 0, w: segLen, d: wallT });
+    }
+    makeSeg('n', neighbors.n);
+    makeSeg('s', neighbors.s);
+    makeSeg('w', neighbors.w);
+    makeSeg('e', neighbors.e);
+
+    const segs = g.userData._segs || [];
+    if (segs.length === 0) {
+      // Orphan wall — render as a stubby block so it doesn't vanish.
+      const stub = new THREE.Mesh(new THREE.BoxGeometry(wallT * 1.6, wallH, wallT * 1.6), M.mudBrick);
+      stub.position.y = wallH / 2;
+      g.add(stub);
+    }
+    for (const s of segs) {
+      const wall = new THREE.Mesh(new THREE.BoxGeometry(s.w, wallH, s.d), M.mudBrick);
+      wall.position.set(s.x, wallH / 2, s.z);
+      g.add(wall);
+      // Tang tile cap (slightly wider, dark ridge)
+      const cap = new THREE.Mesh(new THREE.BoxGeometry(s.w + 0.04, 0.05, s.d + 0.04), M.tangTileDk);
+      cap.position.set(s.x, wallH + 0.025, s.z);
+      g.add(cap);
+    }
+    // Corner cap — slightly taller and a touch wider than the wall.
+    const nbrCount = (neighbors.n?1:0)+(neighbors.s?1:0)+(neighbors.e?1:0)+(neighbors.w?1:0);
+    if (nbrCount >= 2) {
+      const cap = new THREE.Mesh(new THREE.BoxGeometry(wallT * 1.2, wallH + 0.06, wallT * 1.2), M.mudBrickDk);
+      cap.position.y = (wallH + 0.06) / 2;
+      g.add(cap);
+      const top = new THREE.Mesh(new THREE.BoxGeometry(wallT * 1.3, 0.04, wallT * 1.3), M.tangTileDk);
+      top.position.y = wallH + 0.08;
+      g.add(top);
+    }
+    delete g.userData._segs;
+    g.userData = { kind: 'fangWall' };
+    castReceive(g);
+    return g;
+  }
+
+  // Gate mesh — orientation 'x' means path runs east-west, gate spans n/s.
+  // Two red-lacquer columns + lintel + small tile canopy. Center stays clear
+  // so the path tile under it shows through.
+  function makeFangGateMesh(orientation = 'x') {
+    const g = new THREE.Group();
+    const colH = 0.78;
+    const halfSpan = 0.42;
+    // Columns flanking the gateway (placed perpendicular to path axis)
+    const colPositions = orientation === 'x'
+      ? [[0, -halfSpan], [0, halfSpan]]
+      : [[-halfSpan, 0], [halfSpan, 0]];
+    for (const [cx, cz] of colPositions) {
+      const col = WardParts.lacquerColumn(colH, 0.07);
+      col.position.set(cx, col.position.y, cz);
+      g.add(col);
+    }
+    // Lintel beam spanning between columns
+    const beamW = orientation === 'x' ? 0.14 : 1.0;
+    const beamD = orientation === 'x' ? 1.0 : 0.14;
+    const beam = new THREE.Mesh(new THREE.BoxGeometry(beamW, 0.10, beamD), M.redLacquerDk);
+    beam.position.y = colH;
+    g.add(beam);
+    // Tang tile canopy
+    const canopyW = orientation === 'x' ? 0.7 : 1.2;
+    const canopyD = orientation === 'x' ? 1.2 : 0.7;
+    const canopy = WardParts.pitchedTileRoof(canopyW, canopyD, 0.20, colH + 0.10);
+    g.add(canopy);
+    // Plaque (above center, name placeholder)
+    const plaque = new THREE.Mesh(new THREE.BoxGeometry(orientation === 'x' ? 0.10 : 0.30, 0.18, orientation === 'x' ? 0.30 : 0.10), M.flagYellow);
+    plaque.position.y = colH + 0.02;
+    g.add(plaque);
+    g.userData = { kind: 'fangGate' };
+    castReceive(g);
+    return g;
+  }
+
+  function getFangWallNeighbors(x, z) {
+    function probe(nx, nz) {
+      const c = getWorldCell(nx, nz);
+      if (c.kind === 'fangWall') return 'wall';
+      if (c.kind === 'fangGate') return 'gate';
+      return null;
+    }
+    return {
+      n: probe(x, z - 1),
+      s: probe(x, z + 1),
+      e: probe(x + 1, z),
+      w: probe(x - 1, z),
+    };
+  }
+  // Read ghost-board variant — for cells inside the ghost-cells array.
+  function getGhostFangWallNeighbors(cells, x, z) {
+    function probe(nx, nz) {
+      if (nx < 0 || nz < 0 || nx >= cells.length || nz >= cells[0].length) return null;
+      const c = cells[nx] && cells[nx][nz];
+      if (!c) return null;
+      if (c.kind === 'fangWall') return 'wall';
+      if (c.kind === 'fangGate') return 'gate';
+      return null;
+    }
+    return {
+      n: probe(x, z - 1),
+      s: probe(x, z + 1),
+      e: probe(x + 1, z),
+      w: probe(x - 1, z),
+    };
+  }
+  if (typeof window !== 'undefined') {
+    window.__ward = window.__ward || {};
+    Object.assign(window.__ward, {
+      makeFangWallSegment, makeFangGateMesh, getFangWallNeighbors, getGhostFangWallNeighbors,
+    });
+  }
+
+  // -------- ward catalog --------
+  // The single source of truth for ward building specs. Each entry's
+  // `factory` returns a positioned mesh (origin = footprint center).
+  // size: [w, h] cells; cost: subtractive from fang.{money,wood,labor}.
+  const BUILDING_CATALOG = {
+    centralWell: {
+      name: '中央水井', size: [1, 1],
+      cost: { money: 20, wood: 4, labor: 1 },
+      daysToBuild: 1,
+      factory: makeFangWell,
+      output: { fireRisk: -1, morale: 1 },
+    },
+    residence: {
+      name: '民居', size: [1, 1],
+      cost: { money: 12, wood: 6, labor: 1 },
+      daysToBuild: 1,
+      factory: makeFangResidence,
+      output: { labor: 1 },
+    },
+    loomShed: {
+      name: '织棚', size: [2, 1],
+      cost: { money: 30, wood: 10, labor: 2 },
+      daysToBuild: 1,
+      factory: makeFangLoom,
+      output: { cloth: 3, fireRisk: 0.5 },
+    },
+    incenseShop: {
+      name: '香铺', size: [1, 1],
+      cost: { money: 28, wood: 6, labor: 1 },
+      daysToBuild: 1,
+      factory: makeFangIncenseShop,
+      output: { money: 2, fireRisk: 0.8 },
+    },
+    fangAdmin: {
+      name: '坊正所', size: [1, 2],
+      cost: { money: 60, wood: 12, labor: 2 },
+      daysToBuild: 2,
+      factory: makeFangAdminOffice,
+      output: { gov: 2, order: 2 },
+    },
+    inn: {
+      name: '客舍', size: [2, 2],
+      cost: { money: 70, wood: 18, labor: 3 },
+      daysToBuild: 2,
+      factory: makeFangInn,
+      output: { money: 5, congestion: 0.4 },
+    },
+    nobleManor: {
+      name: '达官府邸', size: [2, 2],
+      cost: { money: 150, wood: 30, labor: 4 },
+      daysToBuild: 3,
+      factory: makeFangNobleManor,
+      output: { gov: 3, fame: 4 },
+    },
+    ciDengTemple: {
+      name: '慈灯寺', size: [2, 2],
+      cost: { money: 80, wood: 30, labor: 6 },
+      daysToBuild: 3,
+      factory: makeFangCiDeng,
+      output: { fame: 1 },
+    },
+    fangGate: {
+      name: '坊门', size: [1, 1],
+      cost: { money: 40, wood: 8, labor: 2 },
+      daysToBuild: 1,
+      factory: makeFangGateBuildingMesh,
+      output: { order: 1 },
+      // Special kind: writes world.kind='fangGate' instead of 'fangBuilding'
+      // so the wall adjacency walker sees it. Handled in placeWardBuilding.
+      writeKind: 'fangGate',
+    },
+  };
+  // Display order for catalog UI and keyboard shortcuts (1..9).
+  const BUILDING_CATALOG_ORDER = ['centralWell', 'residence', 'loomShed', 'incenseShop', 'fangAdmin', 'inn', 'nobleManor', 'ciDengTemple', 'fangGate'];
+
+  // BALANCE knobs — daily decay, agent spawn rates, event triggers.
+  // Tuning lives here so playtesting can iterate without touching factories
+  // or sim code. All values are conservative defaults from the demo.
+  const BALANCE = {
+    daily: { rent: -8, taxIn: 6, fireDecay: -0.5, congestionDecay: -0.4 },
+    agents: { spawnRatePerInn: 0.4, monkPerTemple: 1, guardPerAdmin: 1, max: 30 },
+    eventTriggers: {
+      fire:   { fireRiskAtLeast: 4, baseChance: 0.15 },
+      crowd:  { congestionAtLeast: 5, baseChance: 0.12 },
+      bandit: { orderAtMost: 30, baseChance: 0.10 },
+      noble:  { fameAtLeast: 30, baseChance: 0.08 },
+    },
+    fame: { recognition: 50, prestige: 100, capital: 200 },
+    events: { ttlDays: 2 },
+    petitions: { perDayMin: 1, perDayMax: 3, ttlDays: 3, fameMultiplier: 0.02 },
+    promises: { fallbackDays: 2 },
+  };
+
+  // In-game time scale: 60 in-game minutes per 1 real second by default
+  // → 24 in-game hours in ~24 real seconds; 1 in-game day in 24 sec.
+  const SIM_MINUTES_PER_REAL_SECOND = 60;
+
+  // EVENT_TEMPLATES — definitions for the 4 ward events. rollEvents()
+  // checks each template's trigger condition + base probability and, on
+  // success, pushes a populated EventRec into fang.events. applyEventChoice
+  // applies the chosen branch's cost/effects.
+  const EVENT_TEMPLATES = {
+    fire: {
+      kind: 'fire',
+      titleZh: '坊内失火',
+      textZh: '某处工坊起火，火势正在蔓延。',
+      ttlDays: 2,
+      choices: [
+        { id: 'hire', labelZh: '雇人灭火 (-20 钱)', cost: { money: 20 }, effects: { fireRisk: -3, morale: 1 } },
+        { id: 'wait', labelZh: '坐视不理',            cost: {},            effects: { fireRisk: 1, morale: -5, fame: -2 } },
+      ],
+    },
+    crowd: {
+      kind: 'crowd',
+      titleZh: '街市拥挤',
+      textZh: '坊门口人潮拥挤，几乎踩踏。',
+      ttlDays: 2,
+      choices: [
+        { id: 'patrol', labelZh: '增派衙役 (-10 钱)', cost: { money: 10 }, effects: { congestion: -2, order: 2 } },
+        { id: 'limit',  labelZh: '管控人流',           cost: {},            effects: { congestion: -1, morale: -2 } },
+      ],
+    },
+    bandit: {
+      kind: 'bandit',
+      titleZh: '盗匪出没',
+      textZh: '深夜有盗贼潜入坊内。',
+      ttlDays: 2,
+      choices: [
+        { id: 'guard', labelZh: '加强守卫 (-15 钱)',  cost: { money: 15 }, effects: { order: 4, morale: 1 } },
+        { id: 'bribe', labelZh: '私下贿赂 (-25 钱)',  cost: { money: 25 }, effects: { order: 1, fame: -3 } },
+      ],
+    },
+    noble: {
+      kind: 'noble',
+      titleZh: '贵客驾临',
+      textZh: '一位达官贵人来到坊中游览。',
+      ttlDays: 2,
+      choices: [
+        { id: 'host',   labelZh: '盛情款待 (-30 钱)', cost: { money: 30 }, effects: { fame: 8, gov: 3, morale: 2 } },
+        { id: 'modest', labelZh: '从简接待',           cost: {},            effects: { fame: 2, morale: 0 } },
+      ],
+    },
+  };
+  function getBuildingSpec(type) { return BUILDING_CATALOG[type] || null; }
+  function canAffordBuilding(type) {
+    const spec = getBuildingSpec(type);
+    if (!spec) return false;
+    const c = spec.cost || {};
+    return (fang.money >= (c.money || 0))
+        && (fang.wood  >= (c.wood  || 0))
+        && (fang.labor >= (c.labor || 0));
+  }
+  function spendBuildingCost(type) {
+    const spec = getBuildingSpec(type);
+    if (!spec) return false;
+    const c = spec.cost || {};
+    fang.money -= (c.money || 0);
+    fang.wood  -= (c.wood  || 0);
+    fang.labor -= (c.labor || 0);
+    return true;
+  }
+  // Footprint cells covered by a building anchored at (x,z) with given size.
+  function buildingFootprint(size) {
+    const [w, h] = size || [1, 1];
+    const cells = [];
+    for (let dx = 0; dx < w; dx++) for (let dz = 0; dz < h; dz++) cells.push([dx, dz]);
+    return cells;
+  }
+  // World-space center of a building anchored at (x,z) with given size.
+  function buildingCenter(x, z, size) {
+    const [w, h] = size || [1, 1];
+    return new THREE.Vector3(
+      x - GRID / 2 + 0.5 + (w - 1) / 2,
+      0,
+      z - GRID / 2 + 0.5 + (h - 1) / 2,
+    );
+  }
+  if (typeof window !== 'undefined') {
+    window.__ward = window.__ward || {};
+    Object.assign(window.__ward, {
+      BUILDING_CATALOG, BUILDING_CATALOG_ORDER,
+      canAffordBuilding, spendBuildingCost, buildingFootprint, buildingCenter,
+    });
+  }
+
+  // -------- ward placement --------
+  // Player clicks a cell while a build type is armed → check footprint
+  // is clear (no obstacles), check affordability, spend cost, register
+  // building, then setCell over each footprint cell with kind='fangBuilding'.
+  // setCell drives re-render. cellToBuildingId stays consistent because we
+  // add the building BEFORE writing cells (renderCellObject reads
+  // cellToBuildingId for the anchor lookup).
+  function isFootprintFree(x, z, size) {
+    const [w, h] = size || [1, 1];
+    for (let dx = 0; dx < w; dx++) for (let dz = 0; dz < h; dz++) {
+      const cx = x + dx, cz = z + dz;
+      if (cx < 0 || cz < 0 || cx >= GRID || cz >= GRID) return false;
+      const row = world[cx];
+      if (!row) continue;
+      const cell = row[cz];
+      if (!cell) continue;
+      if (cell.kind) return false;
+      if (cell.terrain === 'water' || cell.terrain === 'lava') return false;
+      if (fang.cellToBuildingId[cx + ',' + cz]) return false;
+    }
+    return true;
+  }
+  function placeWardBuilding(type, x, z) {
+    const spec = getBuildingSpec(type);
+    if (!spec) return { ok: false, reason: 'unknown-type' };
+    if (!isFootprintFree(x, z, spec.size)) return { ok: false, reason: 'occupied' };
+    if (!canAffordBuilding(type)) return { ok: false, reason: 'unaffordable' };
+    // Special case for fangGate: a gate isn't a "building" in the
+    // fang.buildings sense — it's a terrain-y kind written into world[].
+    // The wall adjacency walker sees it because kind='fangGate' shows up
+    // in getFangWallNeighbors. No building record is created, no resident
+    // ever moves in; only the order/morale bumps come from a virtual rec.
+    if (spec.writeKind === 'fangGate') {
+      spendBuildingCost(type);
+      // Gates should sit on path terrain, but allow grass too — placement
+      // policy can be tightened later.
+      const terrain = (world[x] && world[x][z] && world[x][z].terrain === 'path') ? 'path' : 'path';
+      setCell(x, z, { terrain, terrainFloors: 1, kind: 'fangGate', floors: 1 });
+      emitWardChanged('gate-placed');
+      return { ok: true, id: null, rec: { type, x, z, virtual: true } };
+    }
+    spendBuildingCost(type);
+    const footprint = buildingFootprint(spec.size);
+    const rec = addBuilding({
+      type, x, z, footprint, level: 1, hp: 100,
+      residents: [], workers: [],
+      output: { ...(spec.output || {}) },
+      promiseId: null, builtOnDay: fang.day,
+    });
+    // Write 'fangBuilding' into world.kind for every footprint cell — this
+    // is what marks cells as occupied and triggers renderCellObject.
+    for (const [dx, dz] of footprint) {
+      const cx = x + dx, cz = z + dz;
+      setCell(cx, cz, {
+        terrain: world[cx][cz].terrain,
+        terrainFloors: world[cx][cz].terrainFloors || 1,
+        kind: 'fangBuilding',
+        floors: 1,
+      });
+    }
+    emitWardChanged('building-placed');
+    return { ok: true, id: rec.id, rec };
+  }
+  function removeWardBuilding(id) {
+    const rec = fang.buildings[id];
+    if (!rec) return false;
+    const footprint = Array.isArray(rec.footprint) ? rec.footprint : [[0, 0]];
+    // First detach from cellToBuildingId so the upcoming setCell does
+    // not re-trigger renderCellObject's fangBuilding branch on stale data.
+    removeBuilding(id);
+    for (const [dx, dz] of footprint) {
+      const cx = rec.x + dx, cz = rec.z + dz;
+      if (!world[cx] || !world[cx][cz]) continue;
+      setCell(cx, cz, {
+        terrain: world[cx][cz].terrain,
+        terrainFloors: world[cx][cz].terrainFloors || 1,
+        kind: null,
+        floors: 1,
+      });
+    }
+    emitWardChanged('building-removed');
+    return true;
+  }
+  if (typeof window !== 'undefined') {
+    window.__ward = window.__ward || {};
+    Object.assign(window.__ward, {
+      isFootprintFree, placeWardBuilding, removeWardBuilding,
+    });
+  }
+
+  // -------- ward generation (procedural) --------
+  // Generates a Tang-style Chang'an ward in place: closed perimeter of
+  // fangWall, 4 cardinal gates, cross-axis path streets, central well, and
+  // a handful of residences in each quadrant. Operates directly on world[]
+  // and fang.* — no intermediate data object. Returns a summary for tests.
+  function generateWardLayout(opts) {
+    opts = opts || {};
+    const seedStr = String(opts.seed || (Date.now() + '-fang'));
+    const rng = makeMulberry32(seedStr);
+    const grid = (typeof GRID === 'number') ? GRID : 16;
+    // Sub-region size: square inscribed in the grid with a small margin.
+    const size = grid >= 16 ? Math.min(12, grid - 2) : Math.max(5, grid - 1);
+    const x0 = Math.floor((grid - size) / 2);
+    const z0 = Math.floor((grid - size) / 2);
+    const cx = x0 + Math.floor(size / 2);
+    const cz = z0 + Math.floor(size / 2);
+
+    // Clear anything currently inside the sub-region (fence/tree/etc.)
+    for (let x = x0; x < x0 + size; x++) {
+      for (let z = z0; z < z0 + size; z++) {
+        if (!world[x] || !world[x][z]) continue;
+        if (world[x][z].kind) {
+          // Remove any building registration too.
+          const id = fang.cellToBuildingId[x + ',' + z];
+          if (id) removeBuilding(id);
+          setCell(x, z, { terrain: 'grass', terrainFloors: 1, kind: null, floors: 1 });
+        }
+      }
+    }
+
+    // Perimeter walls.
+    for (let i = 0; i < size; i++) {
+      const top    = { x: x0 + i, z: z0 };
+      const bot    = { x: x0 + i, z: z0 + size - 1 };
+      const lft    = { x: x0,           z: z0 + i };
+      const rgt    = { x: x0 + size - 1, z: z0 + i };
+      for (const p of [top, bot, lft, rgt]) {
+        setCell(p.x, p.z, { terrain: 'grass', terrainFloors: 1, kind: 'fangWall', floors: 1 });
+      }
+    }
+
+    // 4 cardinal gates — replace the wall cell at each cardinal midpoint
+    // with fangGate, and the underlying tile becomes path.
+    const gateCells = [
+      { x: cx,           z: z0,             dir: 'n' },
+      { x: cx,           z: z0 + size - 1,  dir: 's' },
+      { x: x0,           z: cz,             dir: 'w' },
+      { x: x0 + size - 1, z: cz,            dir: 'e' },
+    ];
+    for (const g of gateCells) {
+      setCell(g.x, g.z, { terrain: 'path', terrainFloors: 1, kind: 'fangGate', floors: 1 });
+    }
+
+    // Cross-axis paths — from each gate to the center.
+    for (let i = 1; i < size - 1; i++) {
+      // Vertical (north-south) axis
+      const vx = cx, vz = z0 + i;
+      if (world[vx] && world[vx][vz] && !world[vx][vz].kind) {
+        setCell(vx, vz, { terrain: 'path', terrainFloors: 1, kind: null, floors: 1 });
+      }
+      // Horizontal (east-west) axis
+      const hx = x0 + i, hz = cz;
+      if (world[hx] && world[hx][hz] && !world[hx][hz].kind) {
+        setCell(hx, hz, { terrain: 'path', terrainFloors: 1, kind: null, floors: 1 });
+      }
+    }
+
+    // Central well at intersection — write directly into fang.buildings
+    // without spending any resources (procgen, not player action).
+    const wellSpec = getBuildingSpec('centralWell');
+    if (wellSpec) {
+      // Center may have been set to path; revert just that anchor cell to
+      // grass so the well sits on solid ground.
+      setCell(cx, cz, { terrain: 'grass', terrainFloors: 1, kind: 'fangBuilding', floors: 1 });
+      addBuilding({
+        type: 'centralWell', x: cx, z: cz, footprint: [[0, 0]],
+        level: 1, hp: 100, residents: [], workers: [],
+        output: { ...(wellSpec.output || {}) },
+        promiseId: null, builtOnDay: fang.day || 1,
+      });
+    }
+
+    // Scatter residences in 4 quadrants. Use rng for variety.
+    const residenceSpec = getBuildingSpec('residence');
+    const residencesPlaced = [];
+    if (residenceSpec) {
+      const quadCorners = [
+        [x0 + 1,     z0 + 1     ],     // NW
+        [cx + 1,     z0 + 1     ],     // NE
+        [x0 + 1,     cz + 1     ],     // SW
+        [cx + 1,     cz + 1     ],     // SE
+      ];
+      const quadW = Math.max(2, cx - x0 - 1);
+      const quadH = Math.max(2, cz - z0 - 1);
+      for (const [qx, qz] of quadCorners) {
+        const target = 2 + Math.floor(rng() * 2); // 2..3 per quadrant
+        let attempts = 0;
+        let placed = 0;
+        while (placed < target && attempts < 40) {
+          attempts++;
+          const ox = Math.floor(rng() * quadW);
+          const oz = Math.floor(rng() * quadH);
+          const px = qx + ox, pz = qz + oz;
+          if (!world[px] || !world[px][pz]) continue;
+          if (world[px][pz].kind) continue;
+          if (world[px][pz].terrain !== 'grass') continue;
+          if (fang.cellToBuildingId[px + ',' + pz]) continue;
+          // skip cells on the cross axis (those are paths)
+          if (px === cx || pz === cz) continue;
+          // place
+          setCell(px, pz, { terrain: 'grass', terrainFloors: 1, kind: 'fangBuilding', floors: 1 });
+          addBuilding({
+            type: 'residence', x: px, z: pz, footprint: [[0, 0]],
+            level: 1, hp: 100, residents: [], workers: [],
+            output: { ...(residenceSpec.output || {}) },
+            promiseId: null, builtOnDay: fang.day || 1,
+          });
+          residencesPlaced.push([px, pz]);
+          placed++;
+        }
+      }
+    }
+
+    emitWardChanged('ward-generated');
+    return {
+      x0, z0, size, center: [cx, cz],
+      gates: gateCells.map(g => [g.x, g.z]),
+      residences: residencesPlaced,
+    };
+  }
+  if (typeof window !== 'undefined') {
+    window.__ward = window.__ward || {};
+    Object.assign(window.__ward, { generateWardLayout });
+  }
+
+  // Test helper: wipe the entire home grid + fang state so tests can start
+  // from a known-clean slate (the default loadInitialScene seeds houses,
+  // paths, water etc., which conflict with placement footprint checks).
+  // Not used by the app itself.
+  if (typeof window !== 'undefined') {
+    window.__ward = window.__ward || {};
+    window.__ward.clearWorldForTest = function clearWorldForTest() {
+      // Reset every cell in the home grid to plain grass.
+      for (let x = 0; x < GRID; x++) {
+        for (let z = 0; z < GRID; z++) {
+          if (!world[x] || !world[x][z]) continue;
+          if (world[x][z].kind) {
+            const id = fang.cellToBuildingId[x + ',' + z];
+            if (id) removeBuilding(id);
+          }
+          setCell(x, z, { terrain: 'grass', terrainFloors: 1, kind: null, floors: 1 });
+        }
+      }
+      // Wipe fang transient state too.
+      fang.buildings = {};
+      fang.agents = {};
+      fang.petitions = [];
+      fang.groups = [];
+      fang.promises = [];
+      fang.events = [];
+      fang.cellToBuildingId = {};
+      emitWardChanged('test-clear');
+    };
+  }
+
   // -------- world data --------
   // world[x][z] stores intent: terrain + the kind of object on it (string or null).
   // cellMeshes[key] stores the rendered meshes (tile + object). The object mesh
@@ -6756,6 +7928,118 @@
 
   function tilePos(x, z) {
     return new THREE.Vector3(x - GRID / 2 + 0.5, 0, z - GRID / 2 + 0.5);
+  }
+
+  // -------- ward state (Chang'an fang management mode) --------
+  // Lives alongside world[x][z] but separate. world.kind tracks terrain-y
+  // markers (fangWall, fangGate, fangBuilding). fang.buildings owns sim
+  // state per building id; fang.cellToBuildingId reverses (x,z) -> id.
+  // All writes still go through setCell(); see addBuilding/removeBuilding.
+  // Agents are rendered in their own scene group, not cellMeshes — see
+  // M5 (ward agents). NEVER mutate shared M.* materials; clone first.
+  function defaultFangState() {
+    return {
+      mode: 'editor',
+      money: 200, labor: 12, wood: 80, cloth: 40,
+      morale: 60, order: 70, fame: 5, gov: 40, prosperity: 10,
+      fireRisk: 0, congestion: 0,
+      day: 1, dayPhase: 'midday', curfew: false,
+      inGameMinute: 8 * 60,
+      simAccum: 0,
+      buildings: {}, agents: {}, petitions: [], groups: [], promises: [], events: [],
+      cellToBuildingId: {},
+      selectedBuildType: null,
+      policy: {
+        // 'strict' (high order, low morale) | 'balanced' | 'loose' (high morale, low order)
+        curfewStrictness: 'balanced',
+        // 'low' (less tax, +morale) | 'normal' | 'high' (more tax, -morale)
+        taxRate: 'normal',
+        // Whether monks are recruited from temples each day rollover.
+        monkRecruit: true,
+      },
+      _nextId: 1,
+    };
+  }
+  function setPolicy(key, value) {
+    if (!fang.policy) fang.policy = {};
+    const allowed = {
+      curfewStrictness: ['strict', 'balanced', 'loose'],
+      taxRate: ['low', 'normal', 'high'],
+      monkRecruit: [true, false],
+    };
+    if (!allowed[key]) return false;
+    if (!allowed[key].includes(value)) return false;
+    fang.policy[key] = value;
+    // Apply secondary effects so policy choice actually nudges balance.
+    if (key === 'taxRate') {
+      // adjust the BALANCE.daily values via a per-tick policyTaxModifier
+      // — simpler to just mutate the snapshot here.
+      if (value === 'low')    fang.morale += 1;
+      if (value === 'high')   fang.morale -= 1;
+    }
+    if (key === 'curfewStrictness') {
+      if (value === 'strict') { fang.order += 1; fang.morale -= 1; }
+      if (value === 'loose')  { fang.order -= 1; fang.morale += 1; }
+    }
+    emitWardChanged('policy-changed');
+    return true;
+  }
+  const fang = defaultFangState();
+  const wardListeners = new Set();
+  function emitWardChanged(reason) {
+    for (const fn of wardListeners) { try { fn(reason); } catch (e) { console.error('ward listener', e); } }
+  }
+  function getBuildingAt(x, z) {
+    const id = fang.cellToBuildingId[x + ',' + z];
+    return id ? (fang.buildings[id] || null) : null;
+  }
+  function addBuilding(rec) {
+    const id = rec.id || ('b' + (fang._nextId++));
+    rec.id = id;
+    fang.buildings[id] = rec;
+    if (Array.isArray(rec.footprint)) {
+      for (const [dx, dz] of rec.footprint) {
+        fang.cellToBuildingId[(rec.x + dx) + ',' + (rec.z + dz)] = id;
+      }
+    } else {
+      fang.cellToBuildingId[rec.x + ',' + rec.z] = id;
+    }
+    emitWardChanged('building-added');
+    return rec;
+  }
+  function removeBuilding(id) {
+    const rec = fang.buildings[id];
+    if (!rec) return false;
+    const footprint = Array.isArray(rec.footprint) ? rec.footprint : [[0, 0]];
+    for (const [dx, dz] of footprint) {
+      delete fang.cellToBuildingId[(rec.x + dx) + ',' + (rec.z + dz)];
+    }
+    delete fang.buildings[id];
+    emitWardChanged('building-removed');
+    return true;
+  }
+  function setWardMode(mode) {
+    if (mode !== 'editor' && mode !== 'manage') return;
+    if (fang.mode === mode) return;
+    fang.mode = mode;
+    if (typeof document !== 'undefined' && document.body) {
+      document.body.classList.toggle('mode-manage', mode === 'manage');
+    }
+    const label = typeof document !== 'undefined' && document.getElementById('mode-toggle-label');
+    if (label) label.textContent = (mode === 'manage') ? '坊管' : '编辑';
+    emitWardChanged('mode-changed');
+  }
+  // Expose minimal surface for boot wiring and tests.
+  // Use Object.assign so we don't clobber properties already attached by
+  // earlier ward sections (catalog/placement live BEFORE us in file order,
+  // but their function references and constants are still hoisted to here
+  // through the IIFE closure).
+  if (typeof window !== 'undefined') {
+    window.__ward = window.__ward || {};
+    Object.assign(window.__ward, {
+      fang, getBuildingAt, addBuilding, removeBuilding, setWardMode,
+      defaultFangState, emitWardChanged, setPolicy,
+    });
   }
 
   // -------- selection (select-tool) --------
@@ -7516,6 +8800,21 @@
       else if (cell.buildingType === 'turret') mesh = makeTurret(level);
       else if (cell.buildingType === 'skyscraper') mesh = makeSkyscraper(Math.max(level, 4));
       else mesh = makeHouse(level);
+    }
+    // Ward walls/gates are also painted on ghost boards so the perimeter
+    // shows across multi-board views. Buildings (fangBuilding) are NOT
+    // shown on ghost boards — only the editor's home board has fang state.
+    else if (cell.kind === 'fangWall') mesh = makeFangWallSegment(getGhostFangWallNeighbors(cells, x, z));
+    else if (cell.kind === 'fangGate') {
+      // Ghost-board gate orientation from neighbouring path cells.
+      const pn = {
+        n: cells[x] && cells[x][z - 1] && cells[x][z - 1].terrain === 'path',
+        s: cells[x] && cells[x][z + 1] && cells[x][z + 1].terrain === 'path',
+        e: cells[x + 1] && cells[x + 1][z] && cells[x + 1][z].terrain === 'path',
+        w: cells[x - 1] && cells[x - 1][z] && cells[x - 1][z].terrain === 'path',
+      };
+      const orient = (pn.e || pn.w) ? 'x' : (pn.n || pn.s) ? 'z' : 'x';
+      mesh = makeFangGateMesh(orient);
     }
     if (mesh && cell.kind !== 'house' && cell.kind !== 'fence' && cell.kind !== 'rock') addEnhancementBits(mesh, cell.kind, level);
     return mesh;
@@ -8452,7 +9751,35 @@
         setGridUserData = false;
       }
       } // close skyscraper-bypass else
-    } else return;
+    }
+    // -------- ward render (fangBuilding) --------
+    // Ward buildings live in fang.buildings; world[x][z].kind only marks
+    // that the cell is occupied. Render only at the anchor cell to avoid
+    // drawing the same building once per footprint cell.
+    else if (kind === 'fangBuilding') {
+      const id = fang.cellToBuildingId[x + ',' + z];
+      const rec = id ? fang.buildings[id] : null;
+      if (!rec) return;
+      // anchor = top-left footprint cell; only draw mesh there.
+      if (rec.x !== x || rec.z !== z) return;
+      const spec = getBuildingSpec(rec.type);
+      if (!spec || !spec.factory) return;
+      mesh = spec.factory(rec.level || 1);
+      const center = buildingCenter(rec.x, rec.z, spec.size);
+      posX = center.x; posZ = center.z;
+      setGridUserData = false;
+    }
+    else if (kind === 'fangWall') {
+      mesh = makeFangWallSegment(getFangWallNeighbors(x, z));
+    }
+    else if (kind === 'fangGate') {
+      // Pick orientation from neighbouring path cells so the gateway spans
+      // ACROSS the road. If no path neighbour, default to 'x' axis.
+      const pn = getPathNeighbors(x, z);
+      const orient = (pn.e || pn.w) ? 'x' : (pn.n || pn.s) ? 'z' : 'x';
+      mesh = makeFangGateMesh(orient);
+    }
+    else return;
 
     if (!mesh) return;
     if (kind !== 'house' && kind !== 'fence' && kind !== 'rock') addEnhancementBits(mesh, kind, level);
@@ -9723,6 +11050,16 @@
   }
 
   function applyTool(x, z) {
+    // Manage mode short-circuit: clicking a cell while a ward building is
+    // armed places that building (subject to affordability + footprint
+    // emptiness). Editing tools are hidden by CSS in this mode, so
+    // selectedTool fall-through would be confusing.
+    if (fang.mode === 'manage') {
+      if (fang.selectedBuildType) {
+        placeWardBuilding(fang.selectedBuildType, x, z);
+      }
+      return;
+    }
     if (selectedTool.auto) {
       if (!getAIProviderState().key) return; // Can't auto-place without API key
       applyAutoTool(x, z);
@@ -10235,6 +11572,159 @@
   document.getElementById('home').addEventListener('click', flyHomeCamera);
   const perspBtn = document.getElementById('persp');
   perspBtn.addEventListener('click', togglePerspective);
+  // Ward (Chang'an fang) mode toggle — flips body class + fang.mode and
+  // refreshes the HUD. Click handler is intentionally minimal here; actual
+  // sim logic / catalog rendering hooks live in `wireWardUI()` further down.
+  const modeToggleBtn = document.getElementById('mode-toggle');
+  if (modeToggleBtn) {
+    modeToggleBtn.addEventListener('click', () => {
+      setWardMode(fang.mode === 'manage' ? 'editor' : 'manage');
+      refreshWardHud();
+    });
+  }
+  function refreshWardHud() {
+    const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = String(v); };
+    set('ward-stat-money', Math.round(fang.money));
+    set('ward-stat-labor', Math.round(fang.labor));
+    set('ward-stat-wood',  Math.round(fang.wood));
+    set('ward-stat-cloth', Math.round(fang.cloth));
+    set('ward-stat-morale', Math.round(fang.morale));
+    set('ward-stat-order',  Math.round(fang.order));
+    set('ward-stat-fame',   Math.round(fang.fame));
+    set('ward-stat-day',    fang.day);
+    const phaseEl = document.getElementById('ward-stat-phase');
+    if (phaseEl) {
+      const map = { dawn: '晨', midday: '昼', dusk: '昏', night: '夜', deepNight: '宵' };
+      phaseEl.textContent = map[fang.dayPhase] || '昼';
+    }
+  }
+  wardListeners.add(refreshWardHud);
+  refreshWardHud();
+
+  // -------- ward catalog UI --------
+  // Renders BUILDING_CATALOG_ORDER as a vertical list of buttons inside
+  // #ward-catalog. Clicking a button arms fang.selectedBuildType; the next
+  // applyTool(x, z) in manage mode commits the placement.
+  // Only these reasons trigger a full catalog repaint. Routine sim ticks
+  // (minute/phase/agent-spawned) must NOT detach buttons mid-click, so we
+  // ignore them here.
+  const CATALOG_REPAINT_REASONS = new Set([
+    null, undefined, 'mode-changed', 'catalog-select', 'building-added',
+    'building-removed', 'building-placed', 'gate-placed', 'fang-hydrated',
+    'test-clear', 'day-rollover',
+  ]);
+  function renderWardCatalog(reason) {
+    if (reason !== undefined && !CATALOG_REPAINT_REASONS.has(reason)) return;
+    const list = document.getElementById('ward-catalog-list');
+    const empty = document.getElementById('ward-catalog-empty');
+    if (!list) return;
+    // Repaint only if order/availability could have changed. For now,
+    // always repaint — list is tiny (≤ 9 items).
+    list.innerHTML = '';
+    const order = (typeof BUILDING_CATALOG_ORDER !== 'undefined') ? BUILDING_CATALOG_ORDER : Object.keys(BUILDING_CATALOG);
+    if (!order.length) {
+      if (empty) empty.style.display = '';
+      return;
+    }
+    if (empty) empty.style.display = 'none';
+    order.forEach((type, idx) => {
+      const spec = BUILDING_CATALOG[type];
+      if (!spec) return;
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'catalog-item';
+      btn.dataset.type = type;
+      const cost = spec.cost || {};
+      btn.innerHTML = (
+        '<span class="catalog-name">' + (idx + 1) + '. ' + spec.name + '</span>'
+        + '<span class="catalog-cost">钱' + (cost.money || 0)
+        + ' / 木' + (cost.wood || 0)
+        + ' / 劳' + (cost.labor || 0) + '</span>'
+      );
+      if (!canAffordBuilding(type)) btn.classList.add('disabled');
+      if (fang.selectedBuildType === type) btn.classList.add('selected');
+      btn.addEventListener('click', () => {
+        if (fang.selectedBuildType === type) {
+          fang.selectedBuildType = null;
+        } else {
+          fang.selectedBuildType = type;
+        }
+        emitWardChanged('catalog-select');
+      });
+      list.appendChild(btn);
+    });
+  }
+  wardListeners.add(renderWardCatalog);
+  renderWardCatalog();
+
+  // -------- ward event modal UI --------
+  // Pops a card whenever fang.events[0] exists. The modal is dismissed by
+  // choosing a branch via applyEventChoice; if multiple events queue up,
+  // the next one auto-opens after a brief beat. Reuses the existing
+  // .modal styling so it matches the editor's other dialogs.
+  const EVENT_MODAL_REASONS = new Set([
+    null, undefined, 'day-rollover', 'event-resolved', 'event-forced',
+    'fang-hydrated', 'mode-changed',
+  ]);
+  function renderWardEventModal(reason) {
+    if (reason !== undefined && !EVENT_MODAL_REASONS.has(reason)) return;
+    const modal = document.getElementById('ward-event-modal');
+    if (!modal) return;
+    const evt = fang.events && fang.events[0];
+    if (!evt) {
+      modal.hidden = true;
+      modal.innerHTML = '';
+      modal.classList.remove('open');
+      return;
+    }
+    // Build card content.
+    const card = document.createElement('div');
+    card.className = 'modal-card';
+    card.setAttribute('role', 'dialog');
+    card.setAttribute('aria-modal', 'true');
+    const head = document.createElement('div');
+    head.className = 'modal-head';
+    const title = document.createElement('strong');
+    title.id = 'ward-event-title';
+    title.textContent = evt.title || '坊内事件';
+    head.appendChild(title);
+    card.appendChild(head);
+    const body = document.createElement('div');
+    body.style.padding = '10px 14px';
+    body.style.color = 'var(--ink)';
+    body.style.fontSize = '13px';
+    body.textContent = evt.text || '';
+    card.appendChild(body);
+    const foot = document.createElement('div');
+    foot.className = 'modal-foot';
+    foot.style.gap = '8px';
+    (evt.choices || []).forEach((ch, idx) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'btn';
+      btn.dataset.choice = String(idx);
+      btn.dataset.eventId = evt.id;
+      btn.textContent = ch.labelZh || ch.label || ('选项 ' + (idx + 1));
+      btn.addEventListener('click', () => {
+        const r = applyEventChoice(evt.id, idx);
+        if (r.ok && typeof refreshWardHud === 'function') refreshWardHud();
+      });
+      foot.appendChild(btn);
+    });
+    card.appendChild(foot);
+    modal.innerHTML = '';
+    modal.appendChild(card);
+    modal.hidden = false;
+    modal.classList.add('open');
+  }
+  wardListeners.add(renderWardEventModal);
+  renderWardEventModal();
+
+  if (typeof window !== 'undefined' && window.__ward) {
+    window.__ward.refreshHud = refreshWardHud;
+    window.__ward.renderCatalog = renderWardCatalog;
+    window.__ward.renderEventModal = renderWardEventModal;
+  }
 
   // Export current world to a downloadable JSON file. Same schema as the
   // localStorage save, so an exported file can be re-imported on any
@@ -11245,6 +12735,241 @@
     }
   }
 
+  // -------- ward agents --------
+  // Tiny capsule meshes for residents/pilgrims/monks/guards/merchants etc.
+  // Each agent owns its own cloned body+head material (so role tints don't
+  // mutate the shared M.*). disposeAgent walks userData.materials so
+  // disposeGroup's geometry-only behavior doesn't leak materials.
+  // agentsGroup lives directly on scene (not worldGroup) so opacity-torch
+  // / ghost-board fades don't touch agents. Visibility is gated on
+  // fang.mode === 'manage' + a runtime visible flag.
+  const agentsGroup = new THREE.Group();
+  agentsGroup.name = 'ward-agents';
+  scene.add(agentsGroup);
+  agentsGroup.visible = false; // editor-mode default
+
+  const AGENT_COLORS = {
+    resident: 0xa86c40,
+    pilgrim:  0xb5a062,
+    monk:     0xa05a2a,
+    guard:    0x2a4d6a,
+    merchant: 0x6a4a8a,
+    thief:    0x3a2620,
+    noble:    0x8a3a6a,
+  };
+
+  function agentRoleColor(role) {
+    return AGENT_COLORS[role] || 0xa86c40;
+  }
+
+  function makeAgentMesh(role) {
+    const g = new THREE.Group();
+    const bodyMat = M.tangCloth.clone();
+    bodyMat.color.setHex(agentRoleColor(role));
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.22, 8), bodyMat);
+    body.position.y = 0.11;
+    g.add(body);
+    const headMat = M.skinTang.clone();
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.075, 10, 8), headMat);
+    head.position.y = 0.30;
+    g.add(head);
+    // Role accent — small headgear/weapon.
+    if (role === 'monk') {
+      const hat = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 8, 0, Math.PI * 2, 0, Math.PI / 2), M.monkRobe.clone());
+      hat.position.y = 0.34;
+      g.add(hat);
+    } else if (role === 'noble') {
+      const crown = new THREE.Mesh(new THREE.ConeGeometry(0.085, 0.10, 6), M.flagYellow.clone());
+      crown.position.y = 0.40;
+      g.add(crown);
+    } else if (role === 'guard') {
+      const spearMat = M.woodTrim;
+      const spear = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.45, 0.02), spearMat);
+      spear.position.set(0.10, 0.30, 0);
+      g.add(spear);
+    }
+    g.userData = {
+      kind: 'agent', role,
+      materials: [bodyMat, headMat],
+    };
+    castReceive(g);
+    return g;
+  }
+
+  function spawnAgent(opts) {
+    const role = opts && opts.role || 'resident';
+    const x = (opts && typeof opts.x === 'number') ? opts.x : Math.floor(GRID / 2);
+    const z = (opts && typeof opts.z === 'number') ? opts.z : Math.floor(GRID / 2);
+    const id = 'a' + (fang._nextId++);
+    const mesh = makeAgentMesh(role);
+    const a = {
+      id, role,
+      x, z, fx: x, fz: z,
+      state: 'idle', path: [], pathIdx: 0, target: null,
+      home: opts && opts.home || null,
+      work: opts && opts.work || null,
+      spawnDay: fang.day, leaveDay: null,
+      mesh,
+    };
+    fang.agents[id] = a;
+    agentsGroup.add(mesh);
+    // Initial world position
+    const pos = new THREE.Vector3(x - GRID / 2 + 0.5, TOP_H || 0, z - GRID / 2 + 0.5);
+    mesh.position.copy(pos);
+    emitWardChanged('agent-spawned');
+    return a;
+  }
+
+  function despawnAgent(id) {
+    const a = fang.agents[id];
+    if (!a) return false;
+    disposeAgent(a);
+    delete fang.agents[id];
+    emitWardChanged('agent-despawned');
+    return true;
+  }
+
+  function disposeAgent(agent) {
+    if (!agent || !agent.mesh) return;
+    agentsGroup.remove(agent.mesh);
+    // Geometry — let disposeGroup handle it.
+    if (typeof disposeGroup === 'function') disposeGroup(agent.mesh);
+    // Unique materials — explicit dispose because disposeGroup intentionally
+    // does NOT touch shared materials (M.*). Per-agent we cloned, so we own.
+    const mats = agent.mesh.userData && agent.mesh.userData.materials;
+    if (Array.isArray(mats)) for (const m of mats) {
+      if (m && typeof m.dispose === 'function') m.dispose();
+    }
+  }
+
+  // Step a single agent forward by `dt` (seconds). Lerp fx/fz toward
+  // path[pathIdx]; advance index when close enough. Does NOT block on
+  // userData.landing of the home building — agents land standalone.
+  const AGENT_SPEED = 3.0; // cells per second
+  function agentStep(dt, agent) {
+    if (!agent) return;
+    // Consume the dt budget across as many path segments as fit. Important
+    // when dt is large (e.g. test or after a stutter) — without this, one
+    // call advances at most a single cell and animation stalls.
+    let budget = AGENT_SPEED * dt;
+    while (budget > 0 && Array.isArray(agent.path) && agent.path.length
+           && agent.pathIdx < agent.path.length) {
+      const next = agent.path[agent.pathIdx];
+      const dx = next[0] - agent.fx;
+      const dz = next[1] - agent.fz;
+      const dist = Math.hypot(dx, dz);
+      if (dist <= budget) {
+        agent.fx = next[0]; agent.fz = next[1];
+        agent.x  = next[0]; agent.z  = next[1];
+        agent.pathIdx += 1;
+        budget -= dist;
+        if (agent.pathIdx >= agent.path.length) {
+          agent.path = []; agent.pathIdx = 0;
+          agent.state = 'idle';
+          break;
+        }
+      } else {
+        agent.fx += (dx / dist) * budget;
+        agent.fz += (dz / dist) * budget;
+        agent.state = 'walking';
+        budget = 0;
+      }
+    }
+    if (agent.mesh) {
+      agent.mesh.position.x = agent.fx - GRID / 2 + 0.5;
+      agent.mesh.position.z = agent.fz - GRID / 2 + 0.5;
+    }
+  }
+
+  // Lazy BFS walkable mask. Cells are walkable iff terrain != water/lava,
+  // not occupied by a building, and (during curfew) not a fangGate (gates
+  // close at night for civilian agents).
+  let walkableMaskCache = null;
+  function invalidateWalkable(reason) {
+    walkableMaskCache = null;
+  }
+  function buildWalkable() {
+    const mask = new Uint8Array(GRID * GRID);
+    for (let x = 0; x < GRID; x++) {
+      const row = world[x];
+      if (!row) continue;
+      for (let z = 0; z < GRID; z++) {
+        const c = row[z];
+        if (!c) { mask[x * GRID + z] = 1; continue; }
+        if (c.kind === 'fangBuilding' || c.kind === 'fangWall' || c.kind === 'rock'
+            || c.kind === 'house' || c.kind === 'tree') { mask[x * GRID + z] = 0; continue; }
+        if (c.terrain === 'water' || c.terrain === 'lava') { mask[x * GRID + z] = 0; continue; }
+        // Gates: during curfew, closed for civilians. Open otherwise.
+        if (c.kind === 'fangGate' && fang.curfew) { mask[x * GRID + z] = 0; continue; }
+        mask[x * GRID + z] = 1;
+      }
+    }
+    walkableMaskCache = mask;
+    return mask;
+  }
+
+  function bfsPath(sx, sz, tx, tz) {
+    if (sx === tx && sz === tz) return [];
+    const mask = walkableMaskCache || buildWalkable();
+    if (sx < 0 || sx >= GRID || sz < 0 || sz >= GRID) return null;
+    if (tx < 0 || tx >= GRID || tz < 0 || tz >= GRID) return null;
+    // BFS — agent must start on a walkable cell, but the target can be
+    // adjacent-to-target (building anchor cells aren't walkable).
+    if (!mask[sx * GRID + sz]) return null;
+    const prev = new Int16Array(GRID * GRID).fill(-1);
+    const queue = [sx * GRID + sz];
+    prev[sx * GRID + sz] = sx * GRID + sz; // sentinel
+    let head = 0;
+    let targetIdx = -1;
+    while (head < queue.length) {
+      const cur = queue[head++];
+      const cx = Math.floor(cur / GRID);
+      const cz = cur % GRID;
+      if (cx === tx && cz === tz) { targetIdx = cur; break; }
+      // Allow stopping adjacent to the target if target is not walkable.
+      if (!mask[tx * GRID + tz]) {
+        if (Math.abs(cx - tx) + Math.abs(cz - tz) === 1) { targetIdx = cur; break; }
+      }
+      for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = cx + dx, nz = cz + dz;
+        if (nx < 0 || nx >= GRID || nz < 0 || nz >= GRID) continue;
+        const nidx = nx * GRID + nz;
+        if (prev[nidx] !== -1) continue;
+        if (!mask[nidx]) continue;
+        prev[nidx] = cur;
+        queue.push(nidx);
+      }
+    }
+    if (targetIdx < 0) return null;
+    // Reconstruct path
+    const path = [];
+    let cur = targetIdx;
+    while (cur !== sx * GRID + sz) {
+      path.unshift([Math.floor(cur / GRID), cur % GRID]);
+      cur = prev[cur];
+    }
+    return path;
+  }
+
+  // Bind agent group visibility to mode + a runtime gate. Refresh on mode
+  // changes (and any other event that toggles ward UI visibility).
+  function refreshAgentsVisibility() {
+    agentsGroup.visible = fang.mode === 'manage';
+  }
+  wardListeners.add(refreshAgentsVisibility);
+  refreshAgentsVisibility();
+
+  if (typeof window !== 'undefined') {
+    window.__ward = window.__ward || {};
+    Object.assign(window.__ward, {
+      agentsGroup,
+      makeAgentMesh, spawnAgent, despawnAgent, disposeAgent, agentStep,
+      agentRoleColor, AGENT_COLORS,
+      buildWalkable, invalidateWalkable, bfsPath,
+      refreshAgentsVisibility,
+    });
+  }
+
   // -------- squash-on-place dust + fade --------
   // When the user drops a rock or fence onto a tile that already has an
   // object on it, we don't silently swap meshes. Instead we:
@@ -11983,6 +13708,7 @@
   cropDusterRoot.name = 'cropDuster';
   cropDusterRoot.visible = false;
   scene.add(cropDusterRoot);
+  if (typeof window !== 'undefined') window.__cropDusterRoot = cropDusterRoot;
   const cropDusterMaterials = [];
   let cropDusterModel = null;
   let cropDusterTime = 0;
@@ -12393,6 +14119,17 @@
   function updateCropDuster(dt) {
     updateCropDustParticles(dt);
     if (!cropDusterModel) return;
+    // Codex Q8 gate: skip crop-duster in Chang'an ward management mode —
+    // a stunt-plane biplane is anachronistic for the Tang setting.
+    if (typeof fang !== 'undefined' && fang && fang.mode === 'manage') {
+      cropDusterRoot.visible = false;
+      if (bannerMesh) bannerMesh.visible = false;
+      if (bannerWire) bannerWire.visible = false;
+      cropDusterState.phase = 'idle';
+      cropDusterState.curve = null;
+      cropDusterState.travel = 0;
+      return;
+    }
     if (activeSeason !== 'summer') {
       cropDusterRoot.visible = false;
       if (bannerMesh) bannerMesh.visible = false;
@@ -12504,6 +14241,275 @@
 
   loadCropDuster();
 
+  // -------- ward simulation tick --------
+  // Visibility-safe sim loop: accumulates clamped dt so Page Visibility
+  // resume can't fast-forward through whole days. Called from animate()
+  // only when fang.mode === 'manage'. Each tick advances inGameMinute,
+  // refreshes dayPhase + curfew, and on per-day boundaries spawns petitions,
+  // progresses promises, tallies outputs, and applies daily decay.
+
+  function dayPhaseFromMinute(min) {
+    const m = ((min % 1440) + 1440) % 1440;
+    if (m >= 23 * 60 || m < 4 * 60) return 'deepNight';
+    if (m < 6 * 60)  return 'dawn';   // 04:00–06:00 reused as dawn boundary
+    if (m < 8 * 60)  return 'dawn';
+    if (m < 18 * 60) return 'midday';
+    if (m < 21 * 60) return 'dusk';
+    return 'night';
+  }
+  function applyDayPhase(newPhase) {
+    if (newPhase === fang.dayPhase) return;
+    fang.dayPhase = newPhase;
+    const curfewBefore = fang.curfew;
+    fang.curfew = (newPhase === 'night' || newPhase === 'deepNight');
+    if (typeof document !== 'undefined' && document.body) {
+      document.body.classList.toggle('fang-deepnight', newPhase === 'deepNight');
+    }
+    if (fang.curfew !== curfewBefore) emitWardChanged('curfew-changed');
+    emitWardChanged('phase-changed');
+  }
+
+  function rollPetitionsForDay() {
+    const types = ['residence', 'loomShed', 'incenseShop', 'inn', 'fangAdmin'];
+    const base = BALANCE.petitions.perDayMin
+      + Math.floor((fang.fame || 0) * BALANCE.petitions.fameMultiplier);
+    const count = Math.min(BALANCE.petitions.perDayMax, Math.max(BALANCE.petitions.perDayMin, base));
+    for (let i = 0; i < count; i++) {
+      const type = types[Math.floor(Math.random() * types.length)];
+      fang.petitions.push({
+        id: 'p' + (fang._nextId++),
+        day: fang.day, type,
+        ttlDays: BALANCE.petitions.ttlDays,
+        groupId: null,
+      });
+    }
+  }
+
+  function progressPromises() {
+    if (!fang.promises.length) return;
+    const stillOpen = [];
+    for (const p of fang.promises) {
+      p.daysRemaining -= 1;
+      if (p.daysRemaining <= 0) {
+        // Promise complete — actually place the building if the footprint
+        // is clear (clearance may have been disturbed since planning).
+        const spec = getBuildingSpec(p.type);
+        if (spec && isFootprintFree(p.x, p.z, spec.size)) {
+          const footprint = buildingFootprint(spec.size);
+          const rec = addBuilding({
+            type: p.type, x: p.x, z: p.z, footprint,
+            level: 1, hp: 100, residents: [], workers: [],
+            output: { ...(spec.output || {}) },
+            promiseId: null, builtOnDay: fang.day,
+          });
+          for (const [dx, dz] of footprint) {
+            const cx = p.x + dx, cz = p.z + dz;
+            setCell(cx, cz, {
+              terrain: world[cx][cz].terrain,
+              terrainFloors: world[cx][cz].terrainFloors || 1,
+              kind: 'fangBuilding',
+              floors: 1,
+            });
+          }
+          if (typeof spec.onComplete === 'function') {
+            try { spec.onComplete(rec); } catch (e) { console.error('onComplete', e); }
+          }
+        }
+      } else {
+        stillOpen.push(p);
+      }
+    }
+    fang.promises = stillOpen;
+  }
+
+  function tallyOutputs() {
+    let woodIn = 0, clothIn = 0, moneyIn = 0, fameIn = 0, govIn = 0, orderIn = 0;
+    let fireDelta = 0, congestionDelta = 0, moraleIn = 0;
+    for (const id in fang.buildings) {
+      const b = fang.buildings[id];
+      const out = b.output || {};
+      if (out.wood)        woodIn += out.wood;
+      if (out.cloth)       clothIn += out.cloth;
+      if (out.money)       moneyIn += out.money;
+      if (out.fame)        fameIn += out.fame;
+      if (out.gov)         govIn += out.gov;
+      if (out.order)       orderIn += out.order;
+      if (out.fireRisk)    fireDelta += out.fireRisk;
+      if (out.congestion)  congestionDelta += out.congestion;
+      if (out.morale)      moraleIn += out.morale;
+      if (out.labor)       fang.labor += out.labor;
+    }
+    fang.wood        += woodIn;
+    fang.cloth       += clothIn;
+    fang.money       += moneyIn;
+    fang.fame        += fameIn;
+    fang.gov         += govIn;
+    fang.order       += orderIn;
+    fang.morale      += moraleIn;
+    fang.fireRisk    += fireDelta;
+    fang.congestion  += congestionDelta;
+  }
+
+  function applyDailyDecay() {
+    fang.money       += BALANCE.daily.taxIn;
+    fang.money       += BALANCE.daily.rent;
+    fang.fireRisk    += BALANCE.daily.fireDecay;
+    fang.congestion  += BALANCE.daily.congestionDecay;
+    // Clamp to non-negative for read-out
+    if (fang.fireRisk < 0)   fang.fireRisk = 0;
+    if (fang.congestion < 0) fang.congestion = 0;
+    if (fang.morale < 0)     fang.morale = 0;
+    if (fang.morale > 100)   fang.morale = 100;
+    if (fang.order < 0)      fang.order = 0;
+    if (fang.order > 100)    fang.order = 100;
+  }
+
+  function expirePetitions() {
+    fang.petitions = fang.petitions.filter(p => (fang.day - p.day) <= p.ttlDays);
+  }
+  function expireEvents() {
+    fang.events = fang.events.filter(e => e.expiresOnDay > fang.day);
+  }
+
+  function simDayRollover() {
+    rollPetitionsForDay();
+    progressPromises();
+    tallyOutputs();
+    applyDailyDecay();
+    expirePetitions();
+    expireEvents();
+    rollEvents();
+    fang.day += 1;
+    emitWardChanged('day-rollover');
+  }
+
+  // -------- ward events --------
+  // rollEvents inspects fang.* thresholds and BALANCE.eventTriggers and
+  // pushes a freshly-populated EventRec for any event that fires.
+  // applyEventChoice consumes the cost and applies the choice's effects.
+  function rollEvents() {
+    const t = BALANCE.eventTriggers;
+    function fire(template) {
+      const inst = {
+        id: 'e' + (fang._nextId++),
+        kind: template.kind,
+        title: template.titleZh,
+        text: template.textZh,
+        choices: template.choices,
+        plotId: null,
+        expiresOnDay: fang.day + (template.ttlDays || BALANCE.events.ttlDays),
+      };
+      fang.events.push(inst);
+      return inst;
+    }
+    // FIRE
+    if (fang.fireRisk >= t.fire.fireRiskAtLeast && Math.random() < t.fire.baseChance) {
+      fire(EVENT_TEMPLATES.fire);
+    }
+    // CROWD
+    if (fang.congestion >= t.crowd.congestionAtLeast && Math.random() < t.crowd.baseChance) {
+      fire(EVENT_TEMPLATES.crowd);
+    }
+    // BANDIT
+    if (fang.order <= t.bandit.orderAtMost && Math.random() < t.bandit.baseChance) {
+      fire(EVENT_TEMPLATES.bandit);
+    }
+    // NOBLE
+    if (fang.fame >= t.noble.fameAtLeast && Math.random() < t.noble.baseChance) {
+      fire(EVENT_TEMPLATES.noble);
+    }
+  }
+  function applyEventChoice(eventId, choiceIdx) {
+    const idx = fang.events.findIndex(e => e.id === eventId);
+    if (idx < 0) return { ok: false, reason: 'unknown-event' };
+    const evt = fang.events[idx];
+    const choice = (evt.choices || [])[choiceIdx];
+    if (!choice) return { ok: false, reason: 'unknown-choice' };
+    // Apply cost (subtract). Costs may go negative; we let it (debt is fine).
+    if (choice.cost) {
+      if (choice.cost.money) fang.money -= choice.cost.money;
+      if (choice.cost.wood)  fang.wood  -= choice.cost.wood;
+      if (choice.cost.labor) fang.labor -= choice.cost.labor;
+      if (choice.cost.cloth) fang.cloth -= choice.cost.cloth;
+    }
+    if (choice.effects) for (const key in choice.effects) {
+      if (typeof fang[key] === 'number') fang[key] += choice.effects[key];
+    }
+    fang.events.splice(idx, 1);
+    emitWardChanged('event-resolved');
+    return { ok: true, evt, choice };
+  }
+  function forceEvent(kind) {
+    const tmpl = EVENT_TEMPLATES[kind];
+    if (!tmpl) return null;
+    const inst = {
+      id: 'e' + (fang._nextId++),
+      kind: tmpl.kind,
+      title: tmpl.titleZh,
+      text: tmpl.textZh,
+      choices: tmpl.choices,
+      plotId: null,
+      expiresOnDay: fang.day + (tmpl.ttlDays || BALANCE.events.ttlDays),
+    };
+    fang.events.push(inst);
+    emitWardChanged('event-forced');
+    return inst;
+  }
+  if (typeof window !== 'undefined') {
+    window.__ward = window.__ward || {};
+    Object.assign(window.__ward, {
+      EVENT_TEMPLATES, rollEvents, applyEventChoice, forceEvent,
+    });
+  }
+
+  function simMinute() {
+    // Light-weight cadence — nothing structural yet (M5 holds back agent
+    // spawns; those land in the agent system below). Future hooks: pilgrim
+    // arrivals from temples, congestion density refresh.
+    emitWardChanged('minute-tick');
+  }
+
+  function simTick(dts) {
+    // dts is already accumulated + clamped at the call site. Advance the
+    // in-game minute counter and detect minute / day boundaries.
+    const before = fang.inGameMinute;
+    const advance = dts * SIM_MINUTES_PER_REAL_SECOND;
+    fang.inGameMinute = before + advance;
+    applyDayPhase(dayPhaseFromMinute(fang.inGameMinute));
+    // Step all agents (cheap; agent count is bounded by BALANCE.agents.max).
+    if (typeof agentStep === 'function') {
+      for (const id in fang.agents) {
+        agentStep(dts, fang.agents[id]);
+      }
+    }
+    // Per-minute tick (cheap).
+    if (Math.floor(fang.inGameMinute) > Math.floor(before)) {
+      simMinute();
+    }
+    // Per-day rollover.
+    while (fang.inGameMinute >= 1440) {
+      fang.inGameMinute -= 1440;
+      simDayRollover();
+    }
+    if (typeof refreshWardHud === 'function') refreshWardHud();
+  }
+
+  // Reset accumulator when tab is restored so we don't fast-forward.
+  if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) fang.simAccum = 0;
+    });
+  }
+
+  if (typeof window !== 'undefined') {
+    window.__ward = window.__ward || {};
+    Object.assign(window.__ward, {
+      BALANCE, SIM_MINUTES_PER_REAL_SECOND,
+      simTick, simMinute, simDayRollover, applyDayPhase, dayPhaseFromMinute,
+      rollPetitionsForDay, progressPromises, tallyOutputs, applyDailyDecay,
+    });
+  }
+
   // -------- animation loop --------
   let prevT = 0;
   let smokeTimer = 0;
@@ -12541,6 +14547,16 @@
     tickWeather(dt);
     updateClouds(dt);
     updateCropDuster(dt);
+    // Ward (Chang'an fang) simulation tick. dt already clamped to ≤50ms;
+    // accumulate so the sim cadence stays steady (~200ms) regardless of
+    // frame rate. visibilitychange handler resets simAccum.
+    if (fang.mode === 'manage') {
+      fang.simAccum += dt;
+      if (fang.simAccum >= 0.2) {
+        simTick(fang.simAccum);
+        fang.simAccum = 0;
+      }
+    }
     // Drain the ghost-board build queue in small slices so visible-distance
     // changes and Reset don't lock up the frame.
     if (pendingGhostBoards.length) processGhostBoardQueue(6);
@@ -12630,9 +14646,13 @@
       "v": {
         "type": "integer",
         "enum": [
-          4
+          1,
+          2,
+          3,
+          4,
+          5
         ],
-        "description": "Schema version. Must be 4."
+        "description": "Schema version. v5 adds optional fang ward state; v1..v4 are accepted via migration."
       },
       "gridSize": {
         "type": "integer",
@@ -12667,6 +14687,11 @@
       "toolId": {
         "type": "string",
         "description": "Optional tool to leave selected after load. Ignored if unknown."
+      },
+      "fang": {
+        "type": "object",
+        "additionalProperties": true,
+        "description": "Optional Chang'an ward management state (v5+). Contains money/labor/wood/cloth/morale/order/fame/gov/prosperity/fireRisk/congestion/day/dayPhase/inGameMinute/buildings/agents/petitions/groups/promises/events/cellToBuildingId/selectedBuildType. Schema is loose to allow tuning fields without re-bumping v."
       }
     },
     "$defs": {
@@ -12711,7 +14736,10 @@
           "flower",
           "bush",
           "cow",
-          "sheep"
+          "sheep",
+          "fangBuilding",
+          "fangWall",
+          "fangGate"
         ]
       },
       "buildingType": {
@@ -13013,7 +15041,7 @@
       },
       kind: {
         type: ['string', 'null'],
-        enum: [null, 'house', 'tree', 'fence', 'rock', 'bridge', 'crop', 'corn', 'wheat', 'pumpkin', 'carrot', 'sunflower', 'tuft', 'flower', 'bush', 'cow', 'sheep'],
+        enum: [null, 'house', 'tree', 'fence', 'rock', 'bridge', 'crop', 'corn', 'wheat', 'pumpkin', 'carrot', 'sunflower', 'tuft', 'flower', 'bush', 'cow', 'sheep', 'fangBuilding', 'fangWall', 'fangGate'],
       },
       floors: {
         type: 'integer',
@@ -13243,13 +15271,13 @@
     // We only need to reject obviously incompatible versions.
     if (data.v === undefined || data.v === null) data.v = STORAGE_VERSION;
     if (typeof data.v === 'string') data.v = parseInt(data.v, 10);
-    if (data.v !== 1 && data.v !== 2 && data.v !== 3 && data.v !== 4) return 'unsupported v: ' + data.v;
+    if (data.v !== 1 && data.v !== 2 && data.v !== 3 && data.v !== 4 && data.v !== 5) return 'unsupported v: ' + data.v;
     if (!Array.isArray(data.cells)) return 'cells must be an array';
     const okCameraMode = new Set(['ortho','topdown','soft','perspective','fp']);
     if (data.cameraMode !== undefined && !okCameraMode.has(data.cameraMode)) return 'cameraMode invalid: ' + data.cameraMode;
     if (data.gridSize !== undefined && !HOME_GRID_OPTIONS.includes(data.gridSize)) return 'gridSize invalid: ' + data.gridSize;
     const okTerrain = new Set(['grass','path','dirt','water','stone','lava','sand','snow']);
-    const okKind = new Set([null,'house','tree','fence','rock','bridge','crop','corn','wheat','pumpkin','carrot','sunflower','tuft','flower','bush','cow','sheep']);
+    const okKind = new Set([null,'house','tree','fence','rock','bridge','crop','corn','wheat','pumpkin','carrot','sunflower','tuft','flower','bush','cow','sheep','fangBuilding','fangWall','fangGate']);
     const okBT = new Set([null,'cottage','manor','tower','turret','skyscraper']);
     const okFenceSide = new Set([null,'n','s','e','w','center-x','center-z']);
     const seen = new Set();
@@ -13698,7 +15726,7 @@
       throw new Error('schema check: response was not an object');
     }
     const okTerrain = new Set(['grass','path','dirt','water','stone','lava','sand','snow']);
-    const okKind = new Set([null,'house','tree','fence','rock','bridge','crop','corn','wheat','pumpkin','carrot','sunflower','tuft','flower','bush','cow','sheep']);
+    const okKind = new Set([null,'house','tree','fence','rock','bridge','crop','corn','wheat','pumpkin','carrot','sunflower','tuft','flower','bush','cow','sheep','fangBuilding','fangWall','fangGate']);
     const okBT = new Set([null,'cottage','manor','tower','turret','skyscraper']);
     let kind = data.kind === undefined ? null : data.kind;
     let terrain = data.terrain;
@@ -14832,7 +16860,91 @@
   // reset) only write once. Versioned key — bump VERSION when the cell schema
   // changes so old saves don't blow up.
   const STORAGE_KEY = 'tinyworld:v1';
-  const STORAGE_VERSION = 4;
+  const STORAGE_VERSION = 5;
+
+  // -------- ward save serialization --------
+  // serializeFang() returns a plain-JSON snapshot of fang.* that can be
+  // persisted by saveState() and restored by hydrateFang(). It strips
+  // mesh references and per-instance materials (those rebuild on load).
+  function serializeFang() {
+    if (typeof fang !== 'object' || !fang) return null;
+    const agentsOut = {};
+    for (const id in fang.agents) {
+      const a = fang.agents[id];
+      if (!a) continue;
+      agentsOut[id] = {
+        id: a.id, role: a.role, x: a.x, z: a.z, fx: a.fx, fz: a.fz,
+        state: a.state, path: a.path, pathIdx: a.pathIdx, target: a.target,
+        home: a.home, work: a.work, spawnDay: a.spawnDay, leaveDay: a.leaveDay,
+      };
+    }
+    return {
+      mode: fang.mode,
+      money: fang.money, labor: fang.labor, wood: fang.wood, cloth: fang.cloth,
+      morale: fang.morale, order: fang.order, fame: fang.fame, gov: fang.gov,
+      prosperity: fang.prosperity, fireRisk: fang.fireRisk, congestion: fang.congestion,
+      day: fang.day, dayPhase: fang.dayPhase, curfew: fang.curfew,
+      inGameMinute: fang.inGameMinute,
+      buildings: fang.buildings,
+      agents: agentsOut,
+      petitions: fang.petitions, groups: fang.groups,
+      promises: fang.promises, events: fang.events,
+      cellToBuildingId: fang.cellToBuildingId,
+      selectedBuildType: fang.selectedBuildType,
+      policy: fang.policy,
+      _nextId: fang._nextId,
+    };
+  }
+  function hydrateFang(snapshot) {
+    if (!snapshot || typeof snapshot !== 'object') return false;
+    // Apply directly to the live fang object so closure references stay valid.
+    const fresh = defaultFangState();
+    // Dispose any agent meshes left over from before hydration. We
+    // re-spawn from snapshot data below.
+    if (fang.agents && typeof disposeAgent === 'function') {
+      for (const id in fang.agents) disposeAgent(fang.agents[id]);
+    }
+    Object.assign(fang, fresh, snapshot);
+    fang.agents = {};
+    // Rebuild cellToBuildingId in case it got out of sync.
+    fang.cellToBuildingId = {};
+    for (const id in fang.buildings) {
+      const b = fang.buildings[id];
+      if (!b || !Array.isArray(b.footprint)) continue;
+      for (const [dx, dz] of b.footprint) {
+        fang.cellToBuildingId[(b.x + dx) + ',' + (b.z + dz)] = id;
+      }
+    }
+    // Rehydrate agents — rebuild mesh + materials from role/x/z.
+    if (snapshot.agents && typeof spawnAgent === 'function') {
+      for (const id in snapshot.agents) {
+        const a = snapshot.agents[id];
+        if (!a) continue;
+        const fresh = spawnAgent({ role: a.role, x: a.x, z: a.z });
+        // Restore non-position fields onto the freshly-spawned agent so the
+        // mesh stays consistent with the runtime objects.
+        fresh.fx = a.fx != null ? a.fx : fresh.x;
+        fresh.fz = a.fz != null ? a.fz : fresh.z;
+        fresh.state = a.state || 'idle';
+        fresh.home = a.home || null;
+        fresh.work = a.work || null;
+        fresh.spawnDay = a.spawnDay || fang.day;
+        fresh.leaveDay = a.leaveDay || null;
+      }
+    }
+    // Restore body class / mode toggle label without firing extra events.
+    if (typeof document !== 'undefined' && document.body) {
+      document.body.classList.toggle('mode-manage', fang.mode === 'manage');
+      const label = document.getElementById('mode-toggle-label');
+      if (label) label.textContent = fang.mode === 'manage' ? '坊管' : '编辑';
+    }
+    emitWardChanged('fang-hydrated');
+    return true;
+  }
+  if (typeof window !== 'undefined') {
+    window.__ward = window.__ward || {};
+    Object.assign(window.__ward, { serializeFang, hydrateFang });
+  }
   let saveTimer = null;
   let suppressSave = false;
 
@@ -14935,13 +17047,19 @@
             if (entry) cells.push(entry);
           }
         }
-        localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        const payload = {
           v: STORAGE_VERSION,
           gridSize: GRID,
           cells,
           cameraMode,
           toolId: selectedTool && selectedTool.id,
-        }));
+        };
+        // v5+: also persist ward state. Strip non-serializable agent fields
+        // (THREE.Group + per-instance materials) — mesh is rebuilt on load.
+        if (typeof serializeFang === 'function') {
+          payload.fang = serializeFang();
+        }
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
       } catch (_) {}
     }, 200);
   }
@@ -14958,7 +17076,7 @@
       console.warn('[applyState] rejected world:', err, data);
       return false;
     }
-    if (data.v !== 1 && data.v !== 2 && data.v !== 3 && data.v !== 4) return false;
+    if (data.v !== 1 && data.v !== 2 && data.v !== 3 && data.v !== 4 && data.v !== 5) return false;
 
     // Restore the saved home grid size before painting cells so the new
     // tiles are framed correctly and ghost boards land in the right
@@ -15202,6 +17320,12 @@
       if (data.toolId) {
         const tool = TOOLS.find(t => t.id === data.toolId);
         if (tool) selectTool(tool);
+      }
+      // v5+: restore Chang'an ward state if the save carried it.
+      if (data.fang && typeof hydrateFang === 'function') {
+        hydrateFang(data.fang);
+        if (typeof refreshWardHud === 'function') refreshWardHud();
+        if (typeof renderWardCatalog === 'function') renderWardCatalog();
       }
       saveState();
       if (typeof opts.onDone === 'function') {
