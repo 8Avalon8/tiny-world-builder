@@ -97,6 +97,69 @@ or you will desync intent from rendering.
   swapped by `togglePerspective()` / `setCameraMode()`. `updateCamera()` writes
   to all camera projections/positions as needed.
 
+## Ward sim (Chang'an fang) life loop
+
+The ward sim layers an autonomous simulation on top of the editor. Two
+parallel data tracks, just like the editor's `world` / `cellMeshes`:
+
+```
+fang.buildings[id]        // intent  — economy + spec + residents[id...]
+fang.agents[id]           // intent  — role + path + state + home/work
+agentsGroup.children      // render  — Three.js Group per agent, scene-parented
+```
+
+Entry points (all on `window.__ward` for tests):
+
+- **`setWardMode('manage'|'editor')`** flips `fang.mode` + `body.mode-manage`.
+  The HUD, catalog, agents group, and ward toast only show in `manage`.
+- **`enterWardModeWithOnboarding()`** is what the welcome CTA + mode toggle
+  button call. Routes through the onboarding modal when `fang.buildings`
+  is empty (3 branches: generate new ward / empty start / cancel).
+- **`placeWardBuilding(type, x, z)`** is the single mutation path for
+  buildings. It spends cost, calls `addBuilding`, writes `kind=fangBuilding`
+  via `setCell`, and finally `spawnBuildingAgents(rec)`.
+- **`progressPromises()`** completes delayed builds; same final hook.
+- **`removeWardBuilding(id)`** calls `despawnBuildingAgents(rec)` BEFORE
+  clearing cells, so the resident ids attached to `rec.residents` don't
+  leak agents into the next mode switch.
+
+### Adding a new building
+
+1. Add an entry to `BUILDING_CATALOG` with `name`, `size`, `cost`, `factory`,
+   `output`, and **`spawns: [{ role, count }]`**. `[]` is fine for purely
+   decorative buildings (well/gate).
+2. Add the id to `BUILDING_CATALOG_ORDER`.
+3. The factory returns a Three.js Group; tile rendering is shared via
+   the `fangBuilding` kind in `renderCellObject`.
+4. Existing tests (`m2-build-place`, `m7-sim-life`) cover the spawn /
+   cost / footprint contract.
+
+### Adding a new agent role
+
+1. Add a color entry to `AGENT_COLORS`.
+2. Tweak `makeAgentMesh` if the role needs a hat/weapon accent.
+3. Extend `brainPickTarget(agent, phase)` with the role's daytime + night
+   behavior. Default fallback (`resident`) is wander+well+home.
+4. Hook visitor lifecycle (`_visitor`, `_heading_out`) only if the role is
+   a pilgrim-style transient.
+
+### Sim cadence
+
+`simTick(dt)` runs while `fang.mode === 'manage'` at ~5Hz (accumulated dt
+clamped via `simAccum`). Every game-minute it calls:
+
+- `assignIdleTargets(currentMinute)` — idle agents get a fresh path via
+  `bfsPath`. Throttled per-agent by `WARD_BRAIN.reassignEveryMinutes`.
+- `rollVisitorSpawn(currentMinute)` — probabilistic pilgrim arrival
+  proportional to `(innCount + templeCount)`.
+- `reapVisitors()` — pilgrims past `leaveDay` route to the nearest gate
+  and despawn on arrival.
+
+Walkable-mask cache lives in `walkableMaskCache`. It is invalidated by
+`setCell` on terrain/kind changes AND by `wardListeners` on building add/
+remove + curfew toggle + policy + fang-hydrated. **Never** read
+`walkableMaskCache` directly — go through `buildWalkable()` or `bfsPath`.
+
 ## Performance budget
 
 - Home grid starts at `8x8` but settings can expose up to `48x48`. Per-frame
@@ -125,3 +188,13 @@ or you will desync intent from rendering.
 - [ ] Placing/erasing a fence updates its neighbors' geometry.
 - [ ] Clusters of houses still render as L/T/+/square where appropriate.
 - [ ] Smoke spawns from house chimneys after they finish landing.
+- [ ] Welcome modal shows "进入长安坊" CTA; clicking it opens the ward
+      onboarding modal.
+- [ ] Entering ward mode with empty `fang.buildings` shows the onboarding
+      modal; "生成新坊" creates walls/gates/streets/well and spawns at
+      least 3 residents + 1 guard at the gates.
+- [ ] In manage mode, idle agents pick new wander targets every few in-game
+      minutes; pop stat (人 N/cap) in `#ward-hud` updates as residents
+      come and go.
+- [ ] Placing a `ciDengTemple` + waiting a few seconds spawns at least one
+      pilgrim at a gate (toast shows "香客抵达").

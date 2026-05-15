@@ -2900,10 +2900,64 @@
     width: auto; padding: 0 12px; min-width: 78px;
     font-weight: 600; font-size: 11.5px;
     display: inline-flex; align-items: center; gap: 6px;
+    position: relative; /* anchor for the ::before pulse */
   }
   body.mode-manage #mode-toggle.mode-pill { background: var(--accent); color: #fff; border-color: var(--accent); }
+  /* When NOT in manage mode, draw a gentle pulse on the toggle so new
+     users notice the long-an ward sim entry. Only animates on hover/idle
+     in the editor; once the user has entered manage mode, it stops. */
+  #mode-toggle.mode-pill::before {
+    content: ''; position: absolute; inset: -3px; border-radius: 999px;
+    border: 1.5px solid var(--accent); opacity: 0; pointer-events: none;
+    animation: modeTogglePulse 2.6s ease-in-out infinite;
+  }
+  body.mode-manage #mode-toggle.mode-pill::before,
+  body.ward-entered #mode-toggle.mode-pill::before { display: none; }
+  @keyframes modeTogglePulse {
+    0%   { opacity: 0;   transform: scale(0.9); }
+    40%  { opacity: 0.55; transform: scale(1.05); }
+    100% { opacity: 0;   transform: scale(1.18); }
+  }
   /* Deep-night overlay tint (ward-only; does not replace tod-night). */
   body.fang-deepnight #ward-hud { box-shadow: 0 4px 18px rgba(50,30,80,0.18); }
+  /* Ward life toasts — bottom-right; only visible during manage mode. */
+  #ward-toast {
+    position: fixed; right: 16px; bottom: 84px;
+    display: none; flex-direction: column-reverse; gap: 6px;
+    pointer-events: none; z-index: 90;
+    max-width: 260px;
+  }
+  body.mode-manage #ward-toast { display: flex; }
+  .ward-toast-item {
+    background: rgba(40, 30, 20, 0.92);
+    color: #fff8e5;
+    padding: 7px 12px;
+    border-radius: 6px;
+    font-size: 12.5px;
+    font-weight: 500;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+    transition: opacity 0.6s ease, transform 0.4s ease;
+    transform: translateY(0);
+  }
+  .ward-toast-item.fade { opacity: 0; transform: translateY(6px); }
+  /* Welcome modal — two-mode CTA layout. */
+  .welcome-modes {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+    margin-top: 14px;
+  }
+  @media (max-width: 520px) { .welcome-modes { grid-template-columns: 1fr; } }
+  .welcome-mode-card {
+    display: flex; flex-direction: column; align-items: flex-start;
+    gap: 4px; padding: 14px 16px; text-align: left;
+    border: 1px solid var(--line); border-radius: 10px;
+    background: var(--panel); cursor: pointer;
+    transition: border-color 0.15s ease, transform 0.15s ease;
+  }
+  .welcome-mode-card:hover { border-color: var(--accent); transform: translateY(-1px); }
+  .welcome-mode-card.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .welcome-mode-card.primary:hover { filter: brightness(1.05); }
+  .welcome-mode-title { font-size: 15px; font-weight: 700; }
+  .welcome-mode-sub { font-size: 11.5px; opacity: 0.85; }
 </style>
 <script type="text/javascript">
   // AI interfaces are a dev/flagged feature. Production hosts default to no
@@ -3375,18 +3429,47 @@
         <strong id="welcome-title" class="welcome-title">Tiny World <em>Builder</em></strong>
         <button class="modal-close" id="welcome-close" title="Close" aria-label="Close welcome dialog">×</button>
       </div>
-      <p class="welcome-copy">Build a little voxel world by painting terrain, dropping houses, drawing fences, planting crops, and shaping paths.</p>
+      <p class="welcome-copy">Build a little voxel world by painting terrain, dropping houses, drawing fences, planting crops, and shaping paths — or step into the Chang'an ward simulation and watch the world come alive.</p>
       <div class="welcome-tips" aria-label="Quick tips">
         <div class="welcome-tip"><strong>Tap or click to build</strong>Select a tool, then tap any tile to place it.</div>
         <div class="welcome-tip"><strong>Move the camera</strong>One finger or left-drag to orbit · two fingers / right-drag / Space to pan · pinch or scroll to zoom.</div>
         <div class="welcome-tip"><strong>Keep going</strong>Use Reset, Clear, Export, Import, and Render from the top bar.</div>
+      </div>
+      <div class="welcome-modes" role="group" aria-label="Pick a mode">
+        <button class="welcome-mode-card" id="welcome-start" type="button">
+          <span class="welcome-mode-title">自由建造</span>
+          <span class="welcome-mode-sub">Free-form voxel editor · paint terrain, drop props.</span>
+        </button>
+        <button class="welcome-mode-card primary" id="welcome-fang" type="button">
+          <span class="welcome-mode-title">进入长安坊</span>
+          <span class="welcome-mode-sub">Chang'an ward sim · 小人会走动 · 昼夜 · 事件 · 经营</span>
+        </button>
       </div>
       <div class="welcome-actions">
         <label class="welcome-dontshow">
           <input type="checkbox" id="welcome-dontshow" />
           <span>Don't show this again</span>
         </label>
-        <button class="btn" id="welcome-start" type="button">Start building</button>
+      </div>
+    </form>
+  </div>
+
+  <div id="ward-onboarding-modal" class="modal" hidden>
+    <form class="modal-card welcome-card" role="dialog" aria-modal="true" aria-labelledby="ward-onboarding-title" onsubmit="return false">
+      <div class="modal-head">
+        <strong id="ward-onboarding-title" class="welcome-title">开启 <em>长安坊</em></strong>
+        <button class="modal-close" id="ward-onboarding-close" title="Close" aria-label="Close ward onboarding">×</button>
+      </div>
+      <p class="welcome-copy">在你的世界里建立一座唐代风格的小坊。选择一种开局方式：</p>
+      <div class="welcome-tips" aria-label="Start options">
+        <div class="welcome-tip"><strong>生成新坊（推荐）</strong>清空中心区域，自动生成坊墙、四道坊门、十字大街和水井，并安置数位起步居民与一名守卫。</div>
+        <div class="welcome-tip"><strong>空坊开始</strong>保留当前世界，进入坊管模式，从零开始营造。资源等于现有数值。</div>
+        <div class="welcome-tip"><strong>稍后再说</strong>退出坊管模式，回到自由建造。</div>
+      </div>
+      <div class="welcome-actions">
+        <button class="btn" id="ward-onboarding-cancel" type="button">稍后</button>
+        <button class="btn" id="ward-onboarding-empty" type="button">空坊开始</button>
+        <button class="btn primary" id="ward-onboarding-gen" type="button">生成新坊</button>
       </div>
     </form>
   </div>
@@ -3706,8 +3789,11 @@
     <span class="stat-sep"></span>
     <span class="stat"><span class="stat-label">天</span><span class="stat-value" id="ward-stat-day">1</span></span>
     <span class="stat-sep"></span>
+    <span class="stat"><span class="stat-label">人</span><span class="stat-value" id="ward-stat-pop">0/0</span></span>
+    <span class="stat-sep"></span>
     <span class="stat"><span class="stat-label" id="ward-stat-phase">晨</span></span>
   </aside>
+  <div id="ward-toast" aria-live="polite" aria-label="Ward sim notifications"></div>
   <aside id="ward-catalog" aria-label="Ward building catalog">
     <div class="catalog-title">营造目录</div>
     <div class="catalog-empty" id="ward-catalog-empty">（建筑目录尚未启用）</div>
@@ -7451,6 +7537,7 @@
       daysToBuild: 1,
       factory: makeFangWell,
       output: { fireRisk: -1, morale: 1 },
+      spawns: [],
     },
     residence: {
       name: '民居', size: [1, 1],
@@ -7458,6 +7545,8 @@
       daysToBuild: 1,
       factory: makeFangResidence,
       output: { labor: 1 },
+      // 2 residents per home — they wander to the well/streets during the day.
+      spawns: [{ role: 'resident', count: 2 }],
     },
     loomShed: {
       name: '织棚', size: [2, 1],
@@ -7465,6 +7554,8 @@
       daysToBuild: 1,
       factory: makeFangLoom,
       output: { cloth: 3, fireRisk: 0.5 },
+      // One weaver lives at the shed.
+      spawns: [{ role: 'resident', count: 1 }],
     },
     incenseShop: {
       name: '香铺', size: [1, 1],
@@ -7472,6 +7563,7 @@
       daysToBuild: 1,
       factory: makeFangIncenseShop,
       output: { money: 2, fireRisk: 0.8 },
+      spawns: [{ role: 'resident', count: 1 }],
     },
     fangAdmin: {
       name: '坊正所', size: [1, 2],
@@ -7479,6 +7571,8 @@
       daysToBuild: 2,
       factory: makeFangAdminOffice,
       output: { gov: 2, order: 2 },
+      // Two guards on patrol.
+      spawns: [{ role: 'guard', count: 2 }],
     },
     inn: {
       name: '客舍', size: [2, 2],
@@ -7486,6 +7580,9 @@
       daysToBuild: 2,
       factory: makeFangInn,
       output: { money: 5, congestion: 0.4 },
+      // Innkeeper + serves as a destination for visiting pilgrims.
+      spawns: [{ role: 'resident', count: 1 }],
+      visitorMagnet: true,
     },
     nobleManor: {
       name: '达官府邸', size: [2, 2],
@@ -7493,6 +7590,7 @@
       daysToBuild: 3,
       factory: makeFangNobleManor,
       output: { gov: 3, fame: 4 },
+      spawns: [{ role: 'noble', count: 1 }],
     },
     ciDengTemple: {
       name: '慈灯寺', size: [2, 2],
@@ -7500,6 +7598,9 @@
       daysToBuild: 3,
       factory: makeFangCiDeng,
       output: { fame: 1 },
+      // Resident monk + pilgrim magnet for periodic visitor spawns.
+      spawns: [{ role: 'monk', count: 1 }],
+      visitorMagnet: true,
     },
     fangGate: {
       name: '坊门', size: [1, 1],
@@ -7685,6 +7786,14 @@
         floors: 1,
       });
     }
+    // Spin up the residents/workers/guards/etc. this building hosts. The
+    // sim's agent brain takes it from here (idle wander + curfew, etc.).
+    if (typeof spawnBuildingAgents === 'function') {
+      try { spawnBuildingAgents(rec); } catch (e) { console.error('spawnBuildingAgents', e); }
+    }
+    if (typeof showWardToast === 'function' && spec.name) {
+      showWardToast('已建成：' + spec.name);
+    }
     emitWardChanged('building-placed');
     return { ok: true, id: rec.id, rec };
   }
@@ -7692,6 +7801,11 @@
     const rec = fang.buildings[id];
     if (!rec) return false;
     const footprint = Array.isArray(rec.footprint) ? rec.footprint : [[0, 0]];
+    // Despawn any agents that called this building home BEFORE we clear
+    // the building record — spawnBuildingAgents stored their ids on rec.residents.
+    if (typeof despawnBuildingAgents === 'function') {
+      try { despawnBuildingAgents(rec); } catch (e) { console.error('despawnBuildingAgents', e); }
+    }
     // First detach from cellToBuildingId so the upcoming setCell does
     // not re-trigger renderCellObject's fangBuilding branch on stale data.
     removeBuilding(id);
@@ -11578,15 +11692,97 @@
   const perspBtn = document.getElementById('persp');
   perspBtn.addEventListener('click', togglePerspective);
   // Ward (Chang'an fang) mode toggle — flips body class + fang.mode and
-  // refreshes the HUD. Click handler is intentionally minimal here; actual
-  // sim logic / catalog rendering hooks live in `wireWardUI()` further down.
+  // refreshes the HUD. Entering manage mode also routes through the
+  // onboarding modal when no buildings exist yet, so first-time players
+  // see the "generate ward" / "empty start" / "later" choices.
   const modeToggleBtn = document.getElementById('mode-toggle');
   if (modeToggleBtn) {
     modeToggleBtn.addEventListener('click', () => {
-      setWardMode(fang.mode === 'manage' ? 'editor' : 'manage');
-      refreshWardHud();
+      if (fang.mode === 'manage') {
+        setWardMode('editor');
+        refreshWardHud();
+      } else if (typeof enterWardModeWithOnboarding === 'function') {
+        enterWardModeWithOnboarding();
+      } else {
+        setWardMode('manage');
+        refreshWardHud();
+      }
     });
   }
+
+  // Onboarding flow shown when the user enters manage mode with an empty
+  // fang.buildings (first run, or after a fresh reset). Three branches:
+  //   - generate a new ward in the center, seed resources + a few residents
+  //     and a guard at the gates;
+  //   - keep the current world and just enter the mode;
+  //   - cancel and stay in editor.
+  function enterWardModeWithOnboarding() {
+    if (typeof setWardMode === 'function') setWardMode('manage');
+    if (typeof refreshWardHud === 'function') refreshWardHud();
+    if (typeof document !== 'undefined' && document.body) {
+      document.body.classList.add('ward-entered');
+    }
+    const buildingCount = fang.buildings ? Object.keys(fang.buildings).length : 0;
+    if (buildingCount > 0) {
+      if (typeof showWardToast === 'function') showWardToast('已进入坊管模式');
+      return;
+    }
+    const modal = document.getElementById('ward-onboarding-modal');
+    if (!modal) return;
+    const genBtn    = document.getElementById('ward-onboarding-gen');
+    const emptyBtn  = document.getElementById('ward-onboarding-empty');
+    const cancelBtn = document.getElementById('ward-onboarding-cancel');
+    const closeBtn  = document.getElementById('ward-onboarding-close');
+    const openFn  = window.__openTinyModal  || openTinyModal;
+    const closeFn = window.__closeTinyModal || closeTinyModal;
+    if (typeof openFn === 'function') openFn(modal, genBtn || emptyBtn);
+
+    let done = false;
+    const finish = () => { if (done) return; done = true; if (typeof closeFn === 'function') closeFn(modal); };
+    modal.__closeModalHandler = finish;
+
+    if (genBtn) genBtn.onclick = () => {
+      if (typeof generateWardLayout === 'function') {
+        try { generateWardLayout({}); } catch (e) { console.error('generateWardLayout', e); }
+      }
+      // Seed resources so the player can actually build something useful.
+      fang.money = Math.max(fang.money, 250);
+      fang.wood  = Math.max(fang.wood,  120);
+      fang.labor = Math.max(fang.labor, 18);
+      // Spawn 3 residents + 1 guard at the gates so manage mode is alive
+      // from the very first second.
+      const gates = [];
+      for (let x = 0; x < GRID; x++) {
+        const row = world[x]; if (!row) continue;
+        for (let z = 0; z < GRID; z++) {
+          const c = row[z];
+          if (c && c.kind === 'fangGate') gates.push([x, z]);
+        }
+      }
+      const initial = Math.min(3, gates.length);
+      for (let i = 0; i < initial; i++) {
+        const g = gates[i];
+        if (typeof spawnAgent === 'function') spawnAgent({ role: 'resident', x: g[0], z: g[1] });
+      }
+      if (gates.length && typeof spawnAgent === 'function') {
+        spawnAgent({ role: 'guard', x: gates[0][0], z: gates[0][1] });
+      }
+      if (typeof showWardToast === 'function') showWardToast('长安坊已生成 · 居民已到');
+      if (typeof refreshWardHud === 'function') refreshWardHud();
+      finish();
+    };
+    if (emptyBtn) emptyBtn.onclick = () => {
+      if (typeof showWardToast === 'function') showWardToast('坊管模式已开启 · 从空地开始');
+      finish();
+    };
+    if (cancelBtn) cancelBtn.onclick = () => {
+      if (typeof setWardMode === 'function') setWardMode('editor');
+      if (typeof refreshWardHud === 'function') refreshWardHud();
+      finish();
+    };
+    if (closeBtn) closeBtn.onclick = finish;
+  }
+  window.__enterWardModeWithOnboarding = enterWardModeWithOnboarding;
   function refreshWardHud() {
     const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = String(v); };
     set('ward-stat-money', Math.round(fang.money));
@@ -11597,6 +11793,9 @@
     set('ward-stat-order',  Math.round(fang.order));
     set('ward-stat-fame',   Math.round(fang.fame));
     set('ward-stat-day',    fang.day);
+    const cap = (BALANCE && BALANCE.agents && BALANCE.agents.max) || 30;
+    const pop = fang.agents ? Object.keys(fang.agents).length : 0;
+    set('ward-stat-pop',   pop + '/' + cap);
     const phaseEl = document.getElementById('ward-stat-phase');
     if (phaseEl) {
       const map = { dawn: '晨', midday: '昼', dusk: '昏', night: '夜', deepNight: '宵' };
@@ -12981,6 +13180,360 @@
     });
   }
 
+  // -------- ward agent lifecycle + brain --------
+  // Turns the ward sim from a static layout into something alive:
+  //   - spawnBuildingAgents: each completed building births its residents
+  //     (residence/inn/loomShed/incenseShop → 居民, fangAdmin → guards,
+  //     ciDengTemple → 僧人, nobleManor → 贵人). Hooked into placement +
+  //     promise-progress.
+  //   - assignIdleTargets: every game-minute scan, idle agents get a fresh
+  //     path target via bfsPath. Role + dayPhase decide WHERE.
+  //   - rollVisitorSpawn: probabilistically spawns pilgrim agents at the
+  //     nearest gate, headed to a temple or inn. They auto-leave after stay.
+  //   - showWardToast: small bottom-right notification queue (already
+  //     gated by body.mode-manage in CSS).
+  //
+  // All paths respect BALANCE.agents.max and run only while
+  // fang.mode === 'manage' (simTick gates the call site).
+
+  const WARD_BRAIN = {
+    reassignEveryMinutes: 4,
+    nightHomeRadius: 2,
+    visitorChancePerInnPerDay: 0.5,
+    visitorChancePerTemplePerDay: 0.8,
+    visitorStayMinDays: 1,
+  };
+
+  function wardAgentCount() {
+    return fang && fang.agents ? Object.keys(fang.agents).length : 0;
+  }
+
+  function wardCanSpawnAgent() {
+    const cap = (BALANCE && BALANCE.agents && BALANCE.agents.max) || 30;
+    return wardAgentCount() < cap;
+  }
+
+  // Pick a walkable cell adjacent to a building anchor so an agent can
+  // actually "live" there (the anchor itself is occupied by fangBuilding).
+  function walkableNeighborOf(x, z) {
+    const mask = walkableMaskCache || buildWalkable();
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = x + dx, nz = z + dz;
+      if (nx < 0 || nx >= GRID || nz < 0 || nz >= GRID) continue;
+      if (mask[nx * GRID + nz]) return [nx, nz];
+    }
+    return null;
+  }
+
+  // Random walkable cell within `radius` Manhattan blocks of (x,z). Returns
+  // null if nothing walkable found within a fixed number of tries.
+  function randomWalkableNear(x, z, radius) {
+    const mask = walkableMaskCache || buildWalkable();
+    for (let tries = 0; tries < 16; tries++) {
+      const dx = Math.floor((Math.random() * 2 - 1) * radius);
+      const dz = Math.floor((Math.random() * 2 - 1) * radius);
+      const nx = x + dx, nz = z + dz;
+      if (nx < 0 || nx >= GRID || nz < 0 || nz >= GRID) continue;
+      if (mask[nx * GRID + nz]) return [nx, nz];
+    }
+    return null;
+  }
+
+  function randomBuildingOfType(type) {
+    const matches = [];
+    for (const id in fang.buildings) {
+      const b = fang.buildings[id];
+      if (b && b.type === type) matches.push(b);
+    }
+    if (!matches.length) return null;
+    return matches[Math.floor(Math.random() * matches.length)];
+  }
+
+  function allGateCells() {
+    const gates = [];
+    for (let x = 0; x < GRID; x++) {
+      const row = world[x];
+      if (!row) continue;
+      for (let z = 0; z < GRID; z++) {
+        const c = row[z];
+        if (c && c.kind === 'fangGate') gates.push([x, z]);
+      }
+    }
+    return gates;
+  }
+
+  function nearestGate(x, z) {
+    const gates = allGateCells();
+    if (!gates.length) return null;
+    let best = gates[0], bestD = Math.abs(best[0] - x) + Math.abs(best[1] - z);
+    for (let i = 1; i < gates.length; i++) {
+      const g = gates[i];
+      const d = Math.abs(g[0] - x) + Math.abs(g[1] - z);
+      if (d < bestD) { bestD = d; best = g; }
+    }
+    return best;
+  }
+
+  // Set an agent's path toward (tx, tz). If the target cell isn't walkable
+  // (e.g. it's a fangBuilding anchor), pathing stops at the nearest
+  // walkable adjacent cell — bfsPath handles that fallback internally.
+  function setAgentPathTo(agent, tx, tz) {
+    if (!agent || typeof bfsPath !== 'function') return false;
+    if (tx == null || tz == null) return false;
+    const path = bfsPath(agent.x, agent.z, tx, tz);
+    if (!path || !path.length) return false;
+    agent.path = path;
+    agent.pathIdx = 0;
+    agent.state = 'walking';
+    agent.target = { x: tx, z: tz };
+    return true;
+  }
+
+  // Birth all the agents declared in spec.spawns for the given building.
+  // Stops early on cap. Records spawned agent ids on rec.residents so
+  // removeWardBuilding can despawn them later.
+  function spawnBuildingAgents(rec) {
+    if (!rec || rec.virtual) return;
+    const spec = getBuildingSpec(rec.type);
+    if (!spec || !Array.isArray(spec.spawns) || !spec.spawns.length) return;
+    const spawnSlot = walkableNeighborOf(rec.x, rec.z) || [rec.x, rec.z];
+    rec.residents = Array.isArray(rec.residents) ? rec.residents : [];
+    for (const sp of spec.spawns) {
+      const count = Math.max(0, sp.count | 0) || 1;
+      for (let i = 0; i < count; i++) {
+        if (!wardCanSpawnAgent()) return;
+        const a = spawnAgent({
+          role: sp.role,
+          x: spawnSlot[0], z: spawnSlot[1],
+          home: { x: rec.x, z: rec.z, buildingId: rec.id, type: rec.type },
+          work: sp.role === 'guard' ? { x: rec.x, z: rec.z, buildingId: rec.id } : null,
+        });
+        if (a) {
+          a.spawnDay = fang.day;
+          rec.residents.push(a.id);
+        }
+      }
+    }
+  }
+
+  function despawnBuildingAgents(rec) {
+    if (!rec || !Array.isArray(rec.residents)) return;
+    for (const id of rec.residents.slice()) {
+      if (fang.agents[id]) despawnAgent(id);
+    }
+    rec.residents = [];
+  }
+
+  // -- Brain: pick a fresh target for an idle agent based on role + phase.
+  function brainPickTarget(agent, phase) {
+    if (!agent) return null;
+    const home = agent.home && Number.isInteger(agent.home.x) ? agent.home : null;
+    const role = agent.role;
+    const isNight = (phase === 'night' || phase === 'deepNight');
+
+    // Visitors / pilgrims: pick a magnet building (temple/inn) if not yet
+    // there; once arrived, head back to a gate to leave.
+    if (role === 'pilgrim' || agent._visitor) {
+      if (agent._heading_out) {
+        const g = nearestGate(agent.x, agent.z);
+        return g;
+      }
+      const target = agent._magnet
+        ? agent._magnet
+        : (randomBuildingOfType('ciDengTemple') || randomBuildingOfType('inn'));
+      if (target) {
+        agent._magnet = { x: target.x, z: target.z, type: target.type };
+        const slot = walkableNeighborOf(target.x, target.z);
+        if (slot) return slot;
+      }
+      return nearestGate(agent.x, agent.z);
+    }
+
+    if (isNight) {
+      // Guards keep patrolling at night (it's their whole job — curfew).
+      if (role === 'guard') {
+        const gates = allGateCells();
+        if (gates.length) return gates[Math.floor(Math.random() * gates.length)];
+        return randomWalkableNear(agent.x, agent.z, 4);
+      }
+      // Residents/monks/nobles head home and stay near it.
+      if (home) {
+        const ns = walkableNeighborOf(home.x, home.z);
+        if (ns) return ns;
+      }
+      return randomWalkableNear(agent.x, agent.z, WARD_BRAIN.nightHomeRadius);
+    }
+
+    // Daytime brains diverge by role.
+    switch (role) {
+      case 'guard': {
+        const r = Math.random();
+        if (r < 0.55) {
+          const gates = allGateCells();
+          if (gates.length) return gates[Math.floor(Math.random() * gates.length)];
+        }
+        // Patrol the main cross or wander.
+        return randomWalkableNear(agent.x, agent.z, 6);
+      }
+      case 'monk': {
+        if (Math.random() < 0.35 && home) {
+          const ns = walkableNeighborOf(home.x, home.z);
+          if (ns) return ns;
+        }
+        return randomWalkableNear(agent.x, agent.z, 5);
+      }
+      case 'noble': {
+        const r = Math.random();
+        let target = null;
+        if (r < 0.30) target = randomBuildingOfType('fangAdmin');
+        else if (r < 0.55) target = randomBuildingOfType('ciDengTemple');
+        else if (r < 0.75 && home) target = { x: home.x, z: home.z };
+        if (target) {
+          const ns = walkableNeighborOf(target.x, target.z);
+          if (ns) return ns;
+        }
+        return randomWalkableNear(agent.x, agent.z, 4);
+      }
+      case 'resident':
+      default: {
+        const roll = Math.random();
+        if (roll < 0.40) {
+          return randomWalkableNear(agent.x, agent.z, 6);
+        }
+        if (roll < 0.70) {
+          const well = randomBuildingOfType('centralWell');
+          if (well) {
+            const ns = walkableNeighborOf(well.x, well.z);
+            if (ns) return ns;
+          }
+          return randomWalkableNear(agent.x, agent.z, 6);
+        }
+        // Head home.
+        if (home) {
+          const ns = walkableNeighborOf(home.x, home.z);
+          if (ns) return ns;
+        }
+        return randomWalkableNear(agent.x, agent.z, 3);
+      }
+    }
+  }
+
+  // Sweep idle agents and give them a fresh wander/work target.
+  function assignIdleTargets(currentMinute) {
+    const phase = fang.dayPhase;
+    for (const id in fang.agents) {
+      const a = fang.agents[id];
+      if (!a) continue;
+      if (a.state !== 'idle') continue;
+      if (a._lastBrainAt != null) {
+        const dt = Math.abs(currentMinute - a._lastBrainAt);
+        // Guard against day wrap (currentMinute resets to 0 at 24:00).
+        const minutesSince = dt < 1440 / 2 ? dt : 1440 - dt;
+        if (minutesSince < WARD_BRAIN.reassignEveryMinutes) continue;
+      }
+      a._lastBrainAt = currentMinute;
+      const target = brainPickTarget(a, phase);
+      if (target && Number.isInteger(target[0]) && Number.isInteger(target[1])) {
+        if (!setAgentPathTo(a, target[0], target[1])) {
+          // Couldn't path there — try a close-by wander as a fallback.
+          const nearby = randomWalkableNear(a.x, a.z, 2);
+          if (nearby) setAgentPathTo(a, nearby[0], nearby[1]);
+        }
+      }
+    }
+  }
+
+  // Probabilistic visitor spawn at gates. Pilgrims pick a magnet building
+  // (temple preferred, inn fallback) and walk to it; reapVisitors handles
+  // departure once they've spent enough time.
+  function rollVisitorSpawn(currentMinute) {
+    const phase = fang.dayPhase;
+    if (phase !== 'midday' && phase !== 'dusk' && phase !== 'dawn') return;
+    if (!wardCanSpawnAgent()) return;
+    let templeCount = 0, innCount = 0;
+    for (const id in fang.buildings) {
+      const t = fang.buildings[id] && fang.buildings[id].type;
+      if (t === 'ciDengTemple') templeCount++;
+      if (t === 'inn') innCount++;
+    }
+    if (!templeCount && !innCount) return;
+    const expectedPerDay = innCount * WARD_BRAIN.visitorChancePerInnPerDay
+                        + templeCount * WARD_BRAIN.visitorChancePerTemplePerDay;
+    const perMinute = expectedPerDay / 1440;
+    if (Math.random() > perMinute) return;
+
+    const target = (templeCount && Math.random() < 0.6)
+      ? randomBuildingOfType('ciDengTemple')
+      : (randomBuildingOfType('inn') || randomBuildingOfType('ciDengTemple'));
+    if (!target) return;
+    const gate = nearestGate(target.x, target.z);
+    if (!gate) return;
+
+    const a = spawnAgent({
+      role: 'pilgrim',
+      x: gate[0], z: gate[1],
+      home: null, work: null,
+    });
+    if (!a) return;
+    a._visitor = true;
+    a._magnet = { x: target.x, z: target.z, type: target.type };
+    a.leaveDay = fang.day + WARD_BRAIN.visitorStayMinDays;
+    const slot = walkableNeighborOf(target.x, target.z);
+    if (slot) setAgentPathTo(a, slot[0], slot[1]);
+    const label = target.type === 'ciDengTemple' ? '寺' : '客舍';
+    if (typeof showWardToast === 'function') showWardToast('香客抵达 · ' + label);
+  }
+
+  // Visitors that have stayed long enough route to a gate and despawn
+  // once they reach it. Two-phase so reach-then-leave looks natural.
+  function reapVisitors() {
+    for (const id in fang.agents) {
+      const a = fang.agents[id];
+      if (!a || !a._visitor) continue;
+      if (a.leaveDay == null || fang.day < a.leaveDay) continue;
+      if (a.state !== 'idle') continue;
+      if (!a._heading_out) {
+        const gate = nearestGate(a.x, a.z);
+        if (gate) {
+          a._heading_out = true;
+          setAgentPathTo(a, gate[0], gate[1]);
+        } else {
+          despawnAgent(id);
+        }
+      } else {
+        despawnAgent(id);
+      }
+    }
+  }
+
+  // Bottom-right ward toast — only visible in manage mode (CSS).
+  function showWardToast(text) {
+    if (typeof document === 'undefined') return;
+    const el = document.getElementById('ward-toast');
+    if (!el) return;
+    const item = document.createElement('div');
+    item.className = 'ward-toast-item';
+    item.textContent = String(text);
+    el.appendChild(item);
+    // Keep the latest 5 items; older ones fade out immediately.
+    const items = el.querySelectorAll('.ward-toast-item');
+    if (items.length > 5) items[0].classList.add('fade');
+    setTimeout(() => { try { item.classList.add('fade'); } catch (_) {} }, 3000);
+    setTimeout(() => { try { if (item.parentNode === el) el.removeChild(item); } catch (_) {} }, 3800);
+  }
+
+  if (typeof window !== 'undefined') {
+    window.__ward = window.__ward || {};
+    Object.assign(window.__ward, {
+      spawnBuildingAgents, despawnBuildingAgents,
+      assignIdleTargets, rollVisitorSpawn, reapVisitors,
+      brainPickTarget, setAgentPathTo, walkableNeighborOf,
+      randomWalkableNear, randomBuildingOfType, nearestGate,
+      wardAgentCount, wardCanSpawnAgent, showWardToast,
+      WARD_BRAIN,
+    });
+  }
+
   // -------- squash-on-place dust + fade --------
   // When the user drops a rock or fence onto a tile that already has an
   // object on it, we don't silently swap meshes. Instead we:
@@ -14325,6 +14878,12 @@
           if (typeof spec.onComplete === 'function') {
             try { spec.onComplete(rec); } catch (e) { console.error('onComplete', e); }
           }
+          if (typeof spawnBuildingAgents === 'function') {
+            try { spawnBuildingAgents(rec); } catch (e) { console.error('spawnBuildingAgents', e); }
+          }
+          if (typeof showWardToast === 'function' && spec.name) {
+            showWardToast('落成：' + spec.name);
+          }
         }
       } else {
         stillOpen.push(p);
@@ -14474,10 +15033,23 @@
   }
 
   function simMinute() {
-    // Light-weight cadence — nothing structural yet (M5 holds back agent
-    // spawns; those land in the agent system below). Future hooks: pilgrim
-    // arrivals from temples, congestion density refresh.
+    // Drives the "life" layer of the ward sim — see ward agent lifecycle
+    // section. Each in-game minute we:
+    //   1. let idle agents pick a fresh walk target (role + phase aware),
+    //   2. probabilistically spawn a pilgrim at a gate when a magnet
+    //      building (temple/inn) exists,
+    //   3. send overstayed pilgrims back to a gate to despawn.
     emitWardChanged('minute-tick');
+    const minute = fang.inGameMinute;
+    if (typeof assignIdleTargets === 'function') {
+      try { assignIdleTargets(minute); } catch (e) { console.error('assignIdleTargets', e); }
+    }
+    if (typeof rollVisitorSpawn === 'function') {
+      try { rollVisitorSpawn(minute); } catch (e) { console.error('rollVisitorSpawn', e); }
+    }
+    if (typeof reapVisitors === 'function') {
+      try { reapVisitors(); } catch (e) { console.error('reapVisitors', e); }
+    }
   }
 
   function simTick(dts) {
@@ -16892,6 +17464,12 @@
         id: a.id, role: a.role, x: a.x, z: a.z, fx: a.fx, fz: a.fz,
         state: a.state, path: a.path, pathIdx: a.pathIdx, target: a.target,
         home: a.home, work: a.work, spawnDay: a.spawnDay, leaveDay: a.leaveDay,
+        // Brain/visitor state — preserves pilgrim lifecycle across saves so
+        // restored worlds don't strand香客 as permanent residents.
+        _visitor: a._visitor || false,
+        _heading_out: a._heading_out || false,
+        _magnet: a._magnet || null,
+        _lastBrainAt: a._lastBrainAt || null,
       };
     }
     return {
@@ -16946,6 +17524,14 @@
         fresh.work = a.work || null;
         fresh.spawnDay = a.spawnDay || fang.day;
         fresh.leaveDay = a.leaveDay || null;
+        // Brain/visitor state — without these, restored pilgrims become
+        // permanent residents and reapVisitors never finds them. Path
+        // itself is intentionally dropped: assignIdleTargets picks a
+        // fresh target on the next sim minute.
+        fresh._visitor     = !!a._visitor;
+        fresh._heading_out = !!a._heading_out;
+        fresh._magnet      = a._magnet || null;
+        fresh._lastBrainAt = a._lastBrainAt != null ? a._lastBrainAt : null;
       }
     }
     // Restore body class / mode toggle label without firing extra events.
@@ -17691,6 +18277,7 @@
     const modal = document.getElementById('welcome-modal');
     const closeBtn = document.getElementById('welcome-close');
     const startBtn = document.getElementById('welcome-start');
+    const fangBtn  = document.getElementById('welcome-fang');
     const dontShow = document.getElementById('welcome-dontshow');
     if (!modal) return;
 
@@ -17715,6 +18302,18 @@
     modal.__closeModalHandler = close;
     closeBtn.addEventListener('click', close);
     startBtn.addEventListener('click', close);
+    if (fangBtn) {
+      fangBtn.addEventListener('click', () => {
+        close();
+        // Defer to next frame so the welcome modal is fully torn down
+        // before the onboarding modal claims focus.
+        const enter = window.__enterWardModeWithOnboarding;
+        if (typeof enter === 'function') {
+          if (typeof requestAnimationFrame === 'function') requestAnimationFrame(enter);
+          else setTimeout(enter, 0);
+        }
+      });
+    }
     modal.addEventListener('click', e => {
       if (e.target === modal) close();
     });
