@@ -1,26 +1,32 @@
 // M0: Tang dynasty palette. Verifies new M.* materials are present in the
-// inline script source. Materials live inside an IIFE closure, so we can't
-// access them at runtime from window — checking source ensures they are
-// defined. Runtime usage is exercised by M2+ tests where factories use them.
+// source. Pre-PR-2 the inline `const M = { ... }` literal lives in
+// tiny-world-builder.html (single file). Post-PR-2 materials live in
+// js/engine/materials.js. We probe both so the spec survives the transition.
 const { test, expect } = require('@playwright/test');
 const { openApp } = require('./helpers');
 const fs = require('fs');
 const path = require('path');
 
-const HTML_PATH = path.join(__dirname, '..', '..', 'tiny-world-builder.html');
+const ROOT = path.join(__dirname, '..', '..');
+const HTML_PATH = path.join(ROOT, 'tiny-world-builder.html');
+const MATERIALS_MODULE = path.join(ROOT, 'js', 'engine', 'materials.js');
+
+function loadPaletteSource() {
+  if (fs.existsSync(MATERIALS_MODULE)) {
+    return fs.readFileSync(MATERIALS_MODULE, 'utf8');
+  }
+  return fs.readFileSync(HTML_PATH, 'utf8');
+}
 
 test('M0 palette: Tang materials are declared', async () => {
-  const src = fs.readFileSync(HTML_PATH, 'utf8');
-  // Each material should appear inside the `const M = { ... }` literal.
-  // We assert presence by exact key with the MeshLambertMaterial constructor
-  // signature pattern. False positives are vanishingly rare.
+  const src = loadPaletteSource();
   const expected = [
     'tangTile:', 'tangTileDk:', 'mudBrick:', 'mudBrickDk:',
     'redLacquer:', 'redLacquerDk:', 'lanternRed:', 'flagYellow:',
     'stoneStep:', 'paperWindow:', 'tangCloth:', 'skinTang:', 'monkRobe:',
   ];
   for (const key of expected) {
-    expect(src, `Material ${key} missing from M = { ... }`).toContain(key);
+    expect(src, `Material ${key} missing from palette source`).toContain(key);
   }
 });
 

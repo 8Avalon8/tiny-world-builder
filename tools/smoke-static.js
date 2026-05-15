@@ -16,14 +16,16 @@ function requireNotIncludes(text, label) {
   if (html.includes(text)) fail('unexpected ' + label + ': ' + text);
 }
 
+// Ward-first contract: editor-era symbols (applyTool/doClear/togglePerspective/
+// makeCloud/openTinyModal/customDepthMaterial) are scheduled for removal in PR-1
+// and are intentionally NOT required here. The pre-PR-2 source-of-truth still
+// lives in tiny-world-builder.html; PR-2 flips this scanner to js/main.js.
 requireIncludes('function setCell(', 'state mutation entry point');
 requireIncludes('function renderCellObject(', 'object renderer');
-requireIncludes('function applyTool(', 'tool application');
-requireIncludes('function doClear(', 'clear action');
-requireIncludes('function togglePerspective(', 'camera toggle');
-requireIncludes('function makeCloud(', 'voxel cloud factory');
-requireIncludes('function openTinyModal(', 'modal focus helper');
-requireIncludes('customDepthMaterial', 'cloud shadow depth material');
+requireIncludes('function placeWardBuilding(', 'ward building placement');
+requireIncludes('function generateWardLayout(', 'ward layout generator');
+requireIncludes('function spawnAgent(', 'agent spawn entry point');
+requireIncludes('function simTick(', 'ward simulation tick');
 requireIncludes('vendor/three/three.r128.min.js', 'self-hosted Three.js');
 requireIncludes('vendor/three/GLTFLoader.r128.js', 'self-hosted GLTFLoader');
 

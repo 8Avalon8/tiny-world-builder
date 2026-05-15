@@ -33,7 +33,10 @@ test('M2 catalog list renders starter items at the top in manage mode', async ({
 });
 
 test('M2 clicking a catalog item arms selectedBuildType', async ({ page }) => {
-  await page.locator('#mode-toggle').click();
+  // Use the test helper to enter manage mode without triggering the
+  // onboarding modal — these tests target catalog-click behaviour, not
+  // the mode-toggle UI flow (which has its own coverage in m1).
+  await enterManageMode(page);
   await page.locator('#ward-catalog-list .catalog-item[data-type="residence"]').click();
   const sel = await page.evaluate(() => window.__ward.fang.selectedBuildType);
   expect(sel).toBe('residence');
@@ -41,7 +44,7 @@ test('M2 clicking a catalog item arms selectedBuildType', async ({ page }) => {
 });
 
 test('M2 clicking same catalog item again deselects', async ({ page }) => {
-  await page.locator('#mode-toggle').click();
+  await enterManageMode(page);
   await page.locator('#ward-catalog-list .catalog-item[data-type="residence"]').click();
   await page.locator('#ward-catalog-list .catalog-item[data-type="residence"]').click();
   const sel = await page.evaluate(() => window.__ward.fang.selectedBuildType);

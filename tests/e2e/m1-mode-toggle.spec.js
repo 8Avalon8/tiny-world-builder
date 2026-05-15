@@ -62,7 +62,10 @@ test('M1 manage mode hides editing toolbar groups', async ({ page }) => {
 });
 
 test('M1 toggling back returns to editor mode and shows toolbar', async ({ page }) => {
-  await page.locator('#mode-toggle').click(); // → manage
+  await page.locator('#mode-toggle').click(); // → manage (opens onboarding modal)
+  // Dismiss the onboarding modal (empty branch keeps manage mode active but
+  // closes the dialog) so the second toggle click can reach #mode-toggle.
+  await page.locator('#ward-onboarding-empty').click();
   await page.locator('#mode-toggle').click(); // → editor
   const bodyClass = await page.evaluate(() => document.body.className);
   expect(bodyClass).not.toContain('mode-manage');

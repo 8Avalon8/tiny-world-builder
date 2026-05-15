@@ -12,6 +12,7 @@ npm run dev          # tools/dev-server.js — serves http://localhost:3000/tiny
 npm test             # check.js (inline JS parse + schema parity) + smoke-static.js
 npm run check        # just the static check (schema parity, asset paths)
 npm run smoke        # just the smoke contracts
+npm run test:unit    # node --test tests/unit (pure-logic suites; PR-3+ populates)
 npm run build        # publish.sh — generates dist/ for Vercel/Netlify
 
 # Playwright E2E (Chang'an ward sim regression):
@@ -29,6 +30,19 @@ TWB_NO_WEBSERVER=1 npx playwright test                   # skip auto-spawn dev-s
 `tiny-world-builder.html` (not byte equality — indentation/key order are
 free, but enums/required/structure must match). Any time you change schema,
 update both.
+
+### Dev-server / module loading notes
+
+- Always open the app over **HTTP** via `npm run dev`, never `file://`. Vendor
+  Three.js (`vendor/three/three.r128.min.js`, `vendor/three/GLTFLoader.r128.js`)
+  is **classic UMD** — it writes `window.THREE`. PR-2 introduces ES modules
+  under `js/` that read `window.THREE` from the global. Module scripts default
+  to `defer`, so the classic vendor `<script>` tags must come **before** any
+  `<script type="module">` tag in `index.html` for the global to exist when
+  modules run.
+- The single-file source-of-truth is `tiny-world-builder.html` until PR-2.
+  After PR-2, the runtime entry becomes `js/main.js`; `tools/smoke-static.js`,
+  `tools/check.js`, and `tests/e2e/m0-palette.spec.js` will follow.
 
 ## Project shape
 
@@ -172,15 +186,23 @@ Entry points (all on `window.__ward` for tests):
 
 ### Sim cadence
 
-`simTick(dt)` runs while `fang.mode === 'manage'` at ~5Hz (accumulated dt
-clamped via `simAccum`). Every game-minute it calls:
+Two independent ticks, on purpose:
 
-- `assignIdleTargets(currentMinute)` — idle agents get a fresh path via
-  `bfsPath`. Throttled per-agent by `WARD_BRAIN.reassignEveryMinutes`.
-- `rollVisitorSpawn(currentMinute)` — probabilistic pilgrim arrival
-  proportional to `(innCount + templeCount)`.
-- `reapVisitors()` — pilgrims past `leaveDay` route to the nearest gate
-  and despawn on arrival.
+- **Locomotion — every animate frame.** `animate()` calls
+  `agentStep(dt, agent)` for every agent in `fang.agents` while
+  `fang.mode === 'manage'`. That keeps mesh motion a smooth tween along
+  the path (heading easing + a tiny walk-bob in `agentStep`) instead of
+  teleporting on the 200ms gameplay cadence. Do **not** call `agentStep`
+  from inside `simTick` — it would advance fx/fz twice and double agent
+  speed.
+- **Gameplay — `simTick(dt)` at ~5Hz** (accumulated dt clamped via
+  `simAccum`). Per game-minute it calls:
+  - `assignIdleTargets(currentMinute)` — idle agents get a fresh path via
+    `bfsPath`. Throttled per-agent by `WARD_BRAIN.reassignEveryMinutes`.
+  - `rollVisitorSpawn(currentMinute)` — probabilistic pilgrim arrival
+    proportional to `(innCount + templeCount)`.
+  - `reapVisitors()` — pilgrims past `leaveDay` route to the nearest gate
+    and despawn on arrival.
 
 Walkable-mask cache lives in `walkableMaskCache`. It is invalidated by
 `setCell` on terrain/kind changes AND by `wardListeners` on building add/

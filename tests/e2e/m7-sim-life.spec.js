@@ -144,8 +144,10 @@ test('M7 visitor spawns at a gate when a temple + gate exist', async ({ page }) 
     const beforeCount = Object.keys(w.fang.agents).length;
     w.fang.dayPhase = 'midday';
     // Stub Math.random so the rolling chance is guaranteed to succeed.
+    // visitorChancePerTemplePerDay=0.8 → perMinute≈0.000556, so the random
+    // sample must be smaller than that to pass the `> perMinute` reject gate.
     const realRandom = Math.random;
-    Math.random = () => 0.001;
+    Math.random = () => 0.0001;
     w.rollVisitorSpawn(700);
     Math.random = realRandom;
     const ids = Object.keys(w.fang.agents);
