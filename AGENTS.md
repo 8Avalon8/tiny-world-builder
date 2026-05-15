@@ -1,7 +1,34 @@
-# AGENTS.md
+# CLAUDE.md / AGENTS.md
 
-Guidance for AI coding agents working in this repo. Read this before touching
+This file provides guidance to Claude Code (claude.ai/code) and other AI
+coding agents when working with code in this repository. `CLAUDE.md` is a
+symlink to `AGENTS.md` — keep them in lockstep. Read this before touching
 `tiny-world-builder.html`.
+
+## Commands
+
+```bash
+npm run dev          # tools/dev-server.js — serves http://localhost:3000/tiny-world-builder
+npm test             # check.js (inline JS parse + schema parity) + smoke-static.js
+npm run check        # just the static check (schema parity, asset paths)
+npm run smoke        # just the smoke contracts
+npm run build        # publish.sh — generates dist/ for Vercel/Netlify
+
+# Playwright E2E (Chang'an ward sim regression):
+cd tests/e2e
+npx playwright install chromium   # one-time
+npx playwright test               # all spec files; reuses dev-server if up
+npx playwright test m5-agents     # single spec file by stem match
+npx playwright test --headed      # watch the browser
+TWB_BASE_URL=http://localhost:3001 npx playwright test   # custom port
+TWB_NO_WEBSERVER=1 npx playwright test                   # skip auto-spawn dev-server
+```
+
+`tools/check.js` does a **JSON semantic-equivalence** compare between
+`world.schema.json` and the embedded `WORLD_SCHEMA` block in
+`tiny-world-builder.html` (not byte equality — indentation/key order are
+free, but enums/required/structure must match). Any time you change schema,
+update both.
 
 ## Project shape
 
@@ -159,6 +186,47 @@ Walkable-mask cache lives in `walkableMaskCache`. It is invalidated by
 `setCell` on terrain/kind changes AND by `wardListeners` on building add/
 remove + curfew toggle + policy + fang-hydrated. **Never** read
 `walkableMaskCache` directly — go through `buildWalkable()` or `bfsPath`.
+
+**Visibility-safe accumulator (don't break this).** `simAccum` adds
+`Math.min(dt, 0.05)` per animate frame, *not* `(t - lastSimTick)`. When the
+tab goes background, naive wall-clock diffing would fast-forward several
+game-days on resume. The `visibilitychange` listener also resets
+`simAccum = 0`. If you ever rewrite the sim loop, keep both protections.
+
+### Three places that must agree on `kind` / `v`
+
+When you add a new `world.kind` value (or bump schema), update **all
+three** or runtime `validateWorld` will reject AI-generated / imported
+worlds even when `npm test` is green:
+
+1. `world.schema.json` — `kind` enum + (if bumping) `v` enum + top-level
+   `properties` (`additionalProperties: false` is enforced, so any new
+   top-level field must be declared, e.g. `fang`).
+2. Embedded `WORLD_SCHEMA` in `tiny-world-builder.html` — kept JSON-
+   semantically equivalent by `tools/check.js`.
+3. Runtime `validateWorld` kind whitelist Set (`okKind`) — the **actual**
+   gate for AI / import paths; the schemas are advisory.
+
+### Test API surface
+
+The ward sim deliberately exposes its internals on `window.__ward` for
+Playwright. Used heavily in `tests/e2e/*.spec.js`:
+
+```
+window.__ward.{setWardMode, placeWardBuilding, removeWardBuilding,
+  spawnAgent, despawnAgent, agentStep, bfsPath, buildWalkable,
+  invalidateWalkable, agentRoleColor, AGENT_COLORS,
+  BUILDING_CATALOG, BUILDING_CATALOG_ORDER,
+  fang, agentsGroup, refreshAgentsVisibility,
+  simTick, simDayRollover, applyDayPhase, dayPhaseFromMinute,
+  forceEvent, applyEventChoice, rollEvents, EVENT_TEMPLATES,
+  setPolicy, serializeFang, hydrateFang,
+  clearWorldForTest, generateWardLayout, ...}
+```
+
+Also `window.__cropDusterRoot` for the manage-mode gating test, and
+`window.__enterWardModeWithOnboarding` for the welcome CTA test. Treat
+this surface as a contract — tests will break if names move.
 
 ## Performance budget
 
