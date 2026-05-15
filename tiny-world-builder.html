@@ -13050,8 +13050,16 @@
   // path[pathIdx]; advance index when close enough. Does NOT block on
   // userData.landing of the home building — agents land standalone.
   const AGENT_SPEED = 3.0; // cells per second
+  const AGENT_TURN_RATE = 12.0; // radians/sec for heading easing
+  const AGENT_BOB_AMP = 0.025; // metres
+  const AGENT_BOB_HZ = 6.0;
   function agentStep(dt, agent) {
     if (!agent) return;
+    // Track the current step's direction so the mesh can face it. Computed
+    // from the partial advance below, falling back to the previously cached
+    // heading on the agent (or its current rotation) when idle.
+    let stepDX = 0;
+    let stepDZ = 0;
     // Consume the dt budget across as many path segments as fit. Important
     // when dt is large (e.g. test or after a stutter) — without this, one
     // call advances at most a single cell and animation stalls.
@@ -13063,6 +13071,7 @@
       const dz = next[1] - agent.fz;
       const dist = Math.hypot(dx, dz);
       if (dist <= budget) {
+        stepDX = dx; stepDZ = dz;
         agent.fx = next[0]; agent.fz = next[1];
         agent.x  = next[0]; agent.z  = next[1];
         agent.pathIdx += 1;
@@ -13073,6 +13082,7 @@
           break;
         }
       } else {
+        stepDX = dx; stepDZ = dz;
         agent.fx += (dx / dist) * budget;
         agent.fz += (dz / dist) * budget;
         agent.state = 'walking';
@@ -13082,6 +13092,33 @@
     if (agent.mesh) {
       agent.mesh.position.x = agent.fx - GRID / 2 + 0.5;
       agent.mesh.position.z = agent.fz - GRID / 2 + 0.5;
+      // Heading easing — only turn while actually moving so a parked agent
+      // doesn't snap to a stale heading on the next pick.
+      if (stepDX !== 0 || stepDZ !== 0) {
+        const targetHeading = Math.atan2(stepDX, stepDZ);
+        const current = (typeof agent._heading === 'number')
+          ? agent._heading
+          : targetHeading;
+        let delta = targetHeading - current;
+        while (delta > Math.PI)  delta -= Math.PI * 2;
+        while (delta < -Math.PI) delta += Math.PI * 2;
+        const step = Math.min(1, AGENT_TURN_RATE * dt);
+        agent._heading = current + delta * step;
+        agent.mesh.rotation.y = agent._heading;
+      }
+      // Tiny walking bob so continuous motion reads as steps rather than
+      // a perfectly flat glide. Idle agents settle back to base height
+      // (TOP_H — the grass slab thickness the spawn position uses).
+      const baseY = TOP_H || 0;
+      if (agent.state === 'walking') {
+        agent._bobPhase = (agent._bobPhase || 0) + dt * AGENT_BOB_HZ;
+        agent.mesh.position.y = baseY + Math.abs(Math.sin(agent._bobPhase)) * AGENT_BOB_AMP;
+      } else {
+        const cur = agent.mesh.position.y;
+        if (cur !== baseY) {
+          agent.mesh.position.y = cur + (baseY - cur) * Math.min(1, dt * 8);
+        }
+      }
     }
   }
 
@@ -15055,16 +15092,14 @@
   function simTick(dts) {
     // dts is already accumulated + clamped at the call site. Advance the
     // in-game minute counter and detect minute / day boundaries.
+    //
+    // Locomotion (agentStep) is intentionally NOT driven here — animate()
+    // calls agentStep(dt) every frame so movement looks continuous instead
+    // of teleporting at the 200ms sim cadence.
     const before = fang.inGameMinute;
     const advance = dts * SIM_MINUTES_PER_REAL_SECOND;
     fang.inGameMinute = before + advance;
     applyDayPhase(dayPhaseFromMinute(fang.inGameMinute));
-    // Step all agents (cheap; agent count is bounded by BALANCE.agents.max).
-    if (typeof agentStep === 'function') {
-      for (const id in fang.agents) {
-        agentStep(dts, fang.agents[id]);
-      }
-    }
     // Per-minute tick (cheap).
     if (Math.floor(fang.inGameMinute) > Math.floor(before)) {
       simMinute();
@@ -15133,7 +15168,15 @@
     // Ward (Chang'an fang) simulation tick. dt already clamped to ≤50ms;
     // accumulate so the sim cadence stays steady (~200ms) regardless of
     // frame rate. visibilitychange handler resets simAccum.
+    //
+    // Locomotion is driven per-frame so movement looks like a smooth tween
+    // along the path instead of teleporting on the simTick cadence. The
+    // gameplay tick (minute/day rollover, brain re-targeting, HUD refresh)
+    // stays on the 200ms accumulator below.
     if (fang.mode === 'manage') {
+      if (typeof agentStep === 'function') {
+        for (const id in fang.agents) agentStep(dt, fang.agents[id]);
+      }
       fang.simAccum += dt;
       if (fang.simAccum >= 0.2) {
         simTick(fang.simAccum);
