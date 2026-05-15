@@ -9957,6 +9957,11 @@
     const userEdited = !!(prev.userEdited || (opts && opts.userEdited));
     world[x][z] = { terrain: nextTerrain, terrainFloors: newTerrainFloors, kind: nextKind, floors: newFloors, buildingType: newBType, fenceSide: newFenceSide, extras: carriedExtras, rotationY: newRotationY, offsetX: newOffsetX, offsetZ: newOffsetZ };
     if (userEdited) world[x][z].userEdited = true;
+    // Ward BFS reads occupancy + water/lava off world cells; any kind or
+    // terrain mutation can flip a cell's walkability.
+    if ((terrainChanged || kindChanged) && typeof invalidateWalkable === 'function') {
+      invalidateWalkable('setCell');
+    }
     const emitCellWebhook = () => {
       if (!suppressSave && typeof fireWebhook === 'function') fireWebhook('cell.set', { x, z, cell: world[x][z] });
     };
@@ -12888,6 +12893,12 @@
   function invalidateWalkable(reason) {
     walkableMaskCache = null;
   }
+  // Ward events that flip walkability: building add/remove (occupancy),
+  // curfew toggle (gates open/close), policy/hydration (catch-all reset).
+  // setCell handles terrain/kind edits directly.
+  if (typeof wardListeners !== 'undefined' && wardListeners && typeof wardListeners.add === 'function') {
+    wardListeners.add(invalidateWalkable);
+  }
   function buildWalkable() {
     const mask = new Uint8Array(GRID * GRID);
     for (let x = 0; x < GRID; x++) {
@@ -15726,7 +15737,12 @@
       throw new Error('schema check: response was not an object');
     }
     const okTerrain = new Set(['grass','path','dirt','water','stone','lava','sand','snow']);
-    const okKind = new Set([null,'house','tree','fence','rock','bridge','crop','corn','wheat','pumpkin','carrot','sunflower','tuft','flower','bush','cow','sheep','fangBuilding','fangWall','fangGate']);
+    // Ward kinds (fangBuilding/fangWall/fangGate) are intentionally excluded:
+    // Auto only calls setCell, which would leave fangBuilding cells without a
+    // corresponding fang.buildings record (cellToBuildingId orphan -> render
+    // skipped but tile still logically occupied). Ward placements must go
+    // through placeWardBuilding / ward generation paths.
+    const okKind = new Set([null,'house','tree','fence','rock','bridge','crop','corn','wheat','pumpkin','carrot','sunflower','tuft','flower','bush','cow','sheep']);
     const okBT = new Set([null,'cottage','manor','tower','turret','skyscraper']);
     let kind = data.kind === undefined ? null : data.kind;
     let terrain = data.terrain;
@@ -17321,9 +17337,15 @@
         const tool = TOOLS.find(t => t.id === data.toolId);
         if (tool) selectTool(tool);
       }
-      // v5+: restore Chang'an ward state if the save carried it.
-      if (data.fang && typeof hydrateFang === 'function') {
-        hydrateFang(data.fang);
+      // v5+: restore Chang'an ward state if the save carried it. For older
+      // (v1..v4) or otherwise no-`fang` saves, reset to defaults so stale
+      // buildings/agents/cellToBuildingId from the previous session don't
+      // leak into the freshly-loaded world. hydrateFang({}) takes the reset
+      // path: disposes agents, restores defaults via Object.assign, and
+      // toggles the body class off.
+      if (typeof hydrateFang === 'function') {
+        const fangSnap = (data.fang && typeof data.fang === 'object') ? data.fang : {};
+        hydrateFang(fangSnap);
         if (typeof refreshWardHud === 'function') refreshWardHud();
         if (typeof renderWardCatalog === 'function') renderWardCatalog();
       }
