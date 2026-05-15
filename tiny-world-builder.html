@@ -10266,133 +10266,22 @@
 
   let currentHover = null;
 
-  // -------- ghost placement preview --------
-  // A translucent live preview of the object that would be placed on
-  // the hovered tile. Updates when the selected tool changes; follows
-  // the cursor; can be rotated and nudged within the tile via the
-  // arrow keys before the user commits with a click.
-  let ghostPreview = null;       // current preview Group (or null)
-  let ghostPreviewKey = null;    // tool signature this preview was built for
-  let ghostRotation = 0;         // radians (added on top of any deterministic rotation)
-  let ghostOffsetX = 0;          // within-tile x nudge
-  let ghostOffsetZ = 0;          // within-tile z nudge
-  const GHOST_ROT_STEP = Math.PI / 2;     // 90° per arrow press — snaps to cardinal facings
-  const GHOST_OFFSET_STEP = 0.06;          // ~6% of a tile per arrow press
-  const GHOST_OFFSET_LIMIT = 0.32;         // clamp so the ghost stays on the tile
-  function snapRot(r) {
-    // Snap to the nearest 90°, wrap into [-PI, PI). Keeps floating-point
-    // drift from accumulating across many arrow presses and guarantees the
-    // committed rotation matches one of four cardinal facings.
-    const step = Math.PI / 2;
-    let v = Math.round(r / step) * step;
-    while (v >  Math.PI) v -= 2 * Math.PI;
-    while (v <= -Math.PI) v += 2 * Math.PI;
-    return v;
-  }
-
-  function ghostToolSignature(tool) {
-    if (!tool || tool.erase || tool.auto) return null;
-    const v = tool.activeVariant;
-    return tool.id + '|' + (v ? v.id : '') + '|' + (tool.kind || tool.terrain || '');
-  }
-
-  function buildGhostMesh(tool) {
-    if (!tool || tool.erase || tool.auto) return null;
-    const kind = tool.kind;
-    let mesh = null;
-    if      (kind === 'tree')      mesh = makeTree();
-    else if (kind === 'rock')      mesh = makeRock({ n: false, s: false, e: false, w: false }, 1, 0, 0);
-    else if (kind === 'tuft')      mesh = makeTuft();
-    else if (kind === 'flower')    mesh = makeFlower();
-    else if (kind === 'bush')      mesh = makeBush();
-    else if (kind === 'cow')       mesh = makeCow();
-    else if (kind === 'sheep')     mesh = makeSheep();
-    else if (kind === 'crop')      mesh = makeCrop();
-    else if (kind === 'corn')      mesh = makeCorn();
-    else if (kind === 'wheat')     mesh = makeWheat();
-    else if (kind === 'pumpkin')   mesh = makePumpkin();
-    else if (kind === 'carrot')    mesh = makeCarrot();
-    else if (kind === 'sunflower') mesh = makeSunflower();
-    else if (kind === 'bridge')    mesh = makeBridge('x');
-    else if (kind === 'fence') {
-      const v = tool.activeVariant;
-      const side = (v && v.fenceSide && v.fenceSide !== 'auto') ? v.fenceSide : 'n';
-      mesh = makeFence(normalizeFenceSide(side), 1);
-    } else if (kind === 'house') {
-      const v = tool.activeVariant;
-      const bt = v && v.buildingType;
-      if      (bt === 'manor')      mesh = makeManor(1);
-      else if (bt === 'tower')      mesh = makeStoneTower(2);
-      else if (bt === 'turret')     mesh = makeTurret(1);
-      else if (bt === 'skyscraper') mesh = makeSkyscraper(4);
-      else                          mesh = makeHouse(1);
-    } else if (tool.terrain) {
-      // For pure terrain tools, show a thin coloured swatch hovering
-      // just above the tile so the user can still see what they'd paint.
-      const matMap = { grass: M.grass, dirt: M.dirtRich, path: M.path, water: M.water };
-      const mat = matMap[tool.terrain] || M.grass;
-      const swatch = new THREE.Mesh(new THREE.BoxGeometry(0.88, 0.04, 0.88), mat);
-      swatch.position.y = 0.02;
-      mesh = new THREE.Group();
-      mesh.add(swatch);
-    }
-    if (!mesh) return null;
-    // Translucent ghost look — clone materials so we don't tint the
-    // shared M.* instances. Disable shadows to keep the preview cheap.
-    mesh.traverse(o => {
-      if (!o.isMesh || !o.material) return;
-      o.material = Array.isArray(o.material) ? o.material.map(m => m.clone()) : o.material.clone();
-      const mats = Array.isArray(o.material) ? o.material : [o.material];
-      mats.forEach(m => {
-        m.transparent = true;
-        m.opacity = 0.45;
-        m.depthWrite = false;
-      });
-      o.castShadow = false;
-      o.receiveShadow = false;
-    });
-    mesh.userData.ghostPreview = true;
-    return mesh;
-  }
-
-  function ensureGhostPreview() {
-    const sig = ghostToolSignature(selectedTool);
-    if (sig === ghostPreviewKey && ghostPreview) return;
-    if (ghostPreview) {
-      scene.remove(ghostPreview);
-      disposeGroup(ghostPreview);
-      ghostPreview = null;
-    }
-    ghostPreviewKey = sig;
-    if (!sig) return;
-    ghostPreview = buildGhostMesh(selectedTool);
-    if (ghostPreview) {
-      ghostPreview.visible = false;
-      scene.add(ghostPreview);
-    }
-  }
-
-  function updateGhostPlacement() {
-    if (!ghostPreview) return;
-    if (!currentHover) { ghostPreview.visible = false; return; }
-    ghostPreview.visible = true;
-    const baseY = TOP_H + (terrainRiseAt(currentHover.x, currentHover.z) || 0);
-    ghostPreview.position.set(
-      currentHover.worldX + ghostOffsetX,
-      baseY + 0.01,
-      currentHover.worldZ + ghostOffsetZ
-    );
-    // Always render the preview at the snapped angle so it matches the
-    // rotation that consumeGhostTransform will commit on click.
-    ghostPreview.rotation.y = snapRot(ghostRotation);
-  }
-
-  function resetGhostTransform() {
-    ghostRotation = 0;
-    ghostOffsetX = 0;
-    ghostOffsetZ = 0;
-    updateGhostPlacement();
-  }
+  // -------- ghost preview compat stubs (G3 removed the editor brush preview) --------
+  // Input handlers + a couple of save-related callers still reference these names.
+  // G1 (editor toolbar) will sweep the remaining callers; for now stubs keep
+  // ward picking happy.
+  let ghostPreview = null;
+  let ghostRotation = 0;
+  let ghostOffsetX = 0;
+  let ghostOffsetZ = 0;
+  function updateGhostPlacement() {}
+  function refreshGhostPreview() {}
+  function ensureGhostPreview() {}
+  function buildGhostMesh() { return null; }
+  function ghostToolSignature() { return ''; }
+  function clearGhostPreview() {}
+  function resetGhostTransform() {}
+  function snapRot(_v) { return 0; }
 
   // -------- raycaster --------
   const raycaster = new THREE.Raycaster();
