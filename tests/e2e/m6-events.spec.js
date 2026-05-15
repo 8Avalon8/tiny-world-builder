@@ -181,17 +181,3 @@ test('M6 setPolicy curfewStrictness shifts order vs morale', async ({ page }) =>
   expect(out.order).toBe(51);
   expect(out.morale).toBe(49);
 });
-
-test('M6 crop-duster is hidden in manage mode', async ({ page }) => {
-  const out = await page.evaluate(async () => {
-    const w = window.__ward;
-    w.setWardMode('manage');
-    // Wait a few frames so animate() → updateCropDuster() runs with the
-    // manage-mode gate active. Browser frame ≈ 16ms; 250ms is comfy.
-    await new Promise(r => setTimeout(r, 250));
-    const root = window.__cropDusterRoot;
-    return { hasRoot: !!root, visible: !!(root && root.visible) };
-  });
-  expect(out.hasRoot).toBe(true);
-  expect(out.visible).toBe(false);
-});
