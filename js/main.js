@@ -1,14 +1,16 @@
 // ES module entry — PR-2 wiring stub.
+//
 // During PR-2 the legacy inline <script> in tiny-world-builder.html still owns
-// the actual runtime. main.js exists to land the module loader, prove vendor
-// classic UMD (window.THREE) is available, and expose a host object that each
-// PR-2 step can write into. Each step replaces a slice of the inline script
-// with an imported module, then assigns the export onto window.__twb so any
-// inline reference keeps working until the inline block is finally deleted.
+// the runtime. main.js exists to land the module loader, prove vendor classic
+// UMD (window.THREE) is available, and host module exports each PR-2 step
+// adds. The inline block keeps running unchanged until the final cutover
+// step (PR-2 Step 19) replaces it.
 
-const ready = (typeof window !== 'undefined') && !!window.THREE;
-if (!ready) {
+import { safeDisposeGeometry, createDisposeGroup } from './engine/disposal.js';
+
+if (!window.THREE) {
   console.error('[twb] vendor THREE missing — vendor/three/three.r128.min.js must load before js/main.js');
 }
 
 window.__twb = window.__twb || { engine: {}, ward: {}, game: {}, ui: {} };
+window.__twb.engine.disposal = { safeDisposeGeometry, createDisposeGroup };
