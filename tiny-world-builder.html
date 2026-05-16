@@ -4115,12 +4115,10 @@
     renderVisibleDistance = Math.max(1, Math.min(4, Math.round(value)));
     ghostPreloadRadius = renderVisibleDistance;
     ghostOuterFadeTiles = 2 + renderVisibleDistance * 2;
-    if (typeof ensureGhostBoardsAroundTarget === 'function') ensureGhostBoardsAroundTarget();
   }
 
   function setRenderVisibleSize(value) {
     renderVisibleSize = Math.max(GRID, Math.min(Math.round(HOME_GRID_MAX * 1.5), Math.round(value)));
-    if (typeof ensureGhostBoardsAroundTarget === 'function') ensureGhostBoardsAroundTarget();
   }
 
   function applyAutoPreviewSettingsForGrid(opts = {}) {
@@ -4310,7 +4308,6 @@
     target.addScaledVector(panForward, dy * scale);
     expandVisibleSizeOnFirstMove();
     updateCamera();
-    ensureGhostBoardsAroundTarget();
     if (typeof requestMinimapRepaint === 'function') requestMinimapRepaint();
   }
   function panCameraByCells(dx, dz) {
@@ -4319,7 +4316,6 @@
     target.z += dz;
     expandVisibleSizeOnFirstMove();
     updateCamera();
-    ensureGhostBoardsAroundTarget();
     if (typeof requestMinimapRepaint === 'function') requestMinimapRepaint();
   }
   updateCamera();
@@ -8195,7 +8191,6 @@
   function ghostBoardKey(_bx, _bz) { return '0,0'; }
   function enqueueGhostBoard(_bx, _bz) {}
   function processGhostBoardQueue(_budgetMs) {}
-  function ensureGhostBoardsAroundTarget() {}
   function rebuildExistingGhostBoards() {}
   function updateGhostRenderBubble() {}
   function updateHomeBoardFade() {}
@@ -9722,18 +9717,6 @@
   // G1 (editor toolbar) will sweep the remaining callers; for now stubs keep
   // ward picking happy.
   let ghostPreview = null;
-  let ghostRotation = 0;
-  let ghostOffsetX = 0;
-  let ghostOffsetZ = 0;
-  function updateGhostPlacement() {}
-  function refreshGhostPreview() {}
-  function ensureGhostPreview() {}
-  function buildGhostMesh() { return null; }
-  function ghostToolSignature() { return ''; }
-  function clearGhostPreview() {}
-  function resetGhostTransform() {}
-  function snapRot(_v) { return 0; }
-
   // -------- raycaster --------
   const raycaster = new THREE.Raycaster();
   const ndc = new THREE.Vector2();
@@ -9814,7 +9797,6 @@
     hoverMesh.visible = false;
     currentHover = null;
     renderer.domElement.classList.remove('dragging');
-    updateGhostPlacement();
   }
 
   function updateHoverAt(x, y) {
@@ -9827,7 +9809,6 @@
       hoverMesh.visible = false;
       currentHover = null;
     }
-    updateGhostPlacement();
   }
 
   renderer.domElement.addEventListener('contextmenu', e => e.preventDefault());
@@ -10591,7 +10572,6 @@
     suppressSave = false;
 
     // Re-create ghost boards around the freshly-sized home.
-    if (typeof ensureGhostBoardsAroundTarget === 'function') ensureGhostBoardsAroundTarget();
     // Re-frame the camera so the new board centres correctly.
     resetCameraDefaults();
     saveState();
@@ -10634,7 +10614,6 @@
     azimuth  = start.az + (end.az - start.az) * u;
     polar    = start.po + (end.po - start.po) * u;
     onResize();
-    if (typeof ensureGhostBoardsAroundTarget === 'function') ensureGhostBoardsAroundTarget();
     if (typeof requestMinimapRepaint === 'function') requestMinimapRepaint();
     if (homeTween.t >= 1) homeTween = null;
   }
@@ -10700,12 +10679,6 @@
     clearGhostWorld();
     loadInitialScene();
     resetCameraDefaults();
-    // Re-enqueue ghost boards now that the world is fresh — they'll
-    // build with all cells starting at opacity 0 (outside the visible
-    // window) so the user only sees the home grid until they pan.
-    if (typeof ensureGhostBoardsAroundTarget === 'function') {
-      ensureGhostBoardsAroundTarget();
-    }
     if (typeof playSfx === 'function') playSfx('whoosh');
     if (typeof fireWebhook === 'function') fireWebhook('world.reset', {});
   }
@@ -12825,7 +12798,6 @@
         if (data.cameraMode && okCameraMode.has(data.cameraMode)) setCameraMode(data.cameraMode);
         else resetCameraDefaults();
       }
-      if (typeof ensureGhostBoardsAroundTarget === 'function') ensureGhostBoardsAroundTarget();
       // v5+: restore Chang'an ward state if the save carried it. For older
       // (v1..v4) or otherwise no-`fang` saves, reset to defaults so stale
       // buildings/agents/cellToBuildingId from the previous session don't
@@ -13015,7 +12987,6 @@
       loadInitialScene();
       resetCameraDefaults();
     }
-    ensureGhostBoardsAroundTarget();
     onResize();
     requestAnimationFrame(animate);
     exposeRuntimeToModules();
