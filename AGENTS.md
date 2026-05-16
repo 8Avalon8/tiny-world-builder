@@ -51,6 +51,59 @@ update both.
 - Tests (`tools/smoke-static.js`) verify both the inline contract and the
   module entry are present.
 
+### Substrate modules (`js/game/`)
+
+PR-3 through PR-6 ported the pure-logic core of the chang_an_fang_demo into
+`js/game/`. These modules are **not yet wired** into the inline ward sim
+runtime — they're unit-test green (416 node tests) and browser-loadable
+(verified by `tests/e2e/m8-substrate.spec.js`), but the inline `simTick`
+keeps using the simpler fang state model.
+
+Module map (every file Apache-style portable, no DOM, no Three.js):
+
+```
+js/game/
+├── state.js           Game state singleton + resetState()
+├── time.js            DAY_START_MINUTE / getPhase / minuteToText
+├── walkmap.js         BFS findPath + nearestWalkable
+├── gates.js           Gate cells + curfew-aware walkability
+├── buildings.js       BUILDINGS_BY_ID + BUILDING_CATALOG (template + onComplete)
+├── plots.js           39 INITIAL_PLOTS + 4 QUADRANTS + 31 WASTELAND_INIT
+├── spatial.js         8-predicate DSL (in/inAny/within/adjacent/notAdjacent/size/...)
+├── projects.js        DEFERRED (depends on inline state/agents/buildings — needs adapter)
+├── petitions.js       12 petition kinds + PETITION_SPAWNERS
+├── promises.js        3-tier outcomes + spatial gates
+├── events.js          11 event templates + resolveEventChoice
+├── citizens.js        Housing capacity + weaver auto-hire + daily output
+├── wasteland.js       Direct + permission unlock state machines
+├── local-effects.js   Smoke/crowd/faith/market/prestige overlay engine
+├── difficulty.js      relaxed/standard/strict modes
+├── groups.js          Social-unit memory carriers for petitions/promises
+├── endgame.js         First-chapter goal evaluator
+├── day.js             simDay orchestrator (one-tick-per-game-day)
+├── balance{,-events,-noble,-petitions,-promises,-risk,-stance,-temple,-vendor,-wasteland}.js
+├── _agent-stubs.js    Noop placeholders for spawnPermanentForPlot / emitSignal
+├── utils.js           clamp/rand/choice/dist/lerp
+├── agents/
+│   ├── agent.js       Agent class + inferLifecycle
+│   ├── movement.js    setTargetCell/advancePath/lingerStep
+│   ├── needs.js       Thirst/fatigue increments + needWeight
+│   ├── tasks.js       Task stack + FSM + interruption + cooldowns
+│   ├── signals.js     emitSignal + tickSignals (5Hz throttle)
+│   ├── spatial-query.js queryRadius
+│   ├── spawn.js       ambient/initial/spawnVagrants/spawnCharacter
+│   ├── permanent.js   Permanent lifecycle + onPlotDamaged/Repaired
+│   ├── routines.js    transient/permanent/special dispatch
+│   ├── celebrities.js Daily roll + group memory carriers
+│   ├── phase-hooks.js broadcastPhaseChange
+│   └── characters/    index.js + demoNpc.js
+```
+
+Unit tests under `tests/unit/*.test.js` cover each module + cross-module
+scenarios (7-day full simulation runs). Run `npm run test:unit`. Wiring
+(adapter PR) is the next chapter — `js/ward/sim-adapter.js` will bridge
+`fang` ↔ `state.stats` + map plot (x, y) ↔ world (x, z).
+
 ## Project shape
 
 - Main app: `tiny-world-builder.html`. Inline CSS in `<style>`, inline JS in a
