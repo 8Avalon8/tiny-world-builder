@@ -9,8 +9,8 @@
   "properties": {
     "v": {
       "type": "integer",
-      "enum": [4],
-      "description": "Schema version. Must be 4."
+      "enum": [1, 2, 3, 4, 5],
+      "description": "Schema version. v5 adds optional fang ward state; v1..v4 are accepted via migration."
     },
     "gridSize": {
       "type": "integer",
@@ -30,6 +30,11 @@
     "toolId": {
       "type": "string",
       "description": "Optional tool to leave selected after load. Ignored if unknown."
+    },
+    "fang": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Optional Chang'an ward management state (v5+). Contains money/labor/wood/cloth/morale/order/fame/gov/prosperity/fireRisk/congestion/day/dayPhase/inGameMinute/buildings/agents/petitions/groups/promises/events/cellToBuildingId/selectedBuildType. Schema is loose to allow tuning fields without re-bumping v."
     }
   },
   "$defs": {
@@ -41,7 +46,7 @@
     },
     "kind": {
       "type": ["string", "null"],
-      "enum": [null, "house", "tree", "fence", "rock", "bridge", "crop", "corn", "wheat", "pumpkin", "carrot", "sunflower", "tuft", "flower", "bush", "cow", "sheep"]
+      "enum": [null, "house", "tree", "fence", "rock", "bridge", "crop", "corn", "wheat", "pumpkin", "carrot", "sunflower", "tuft", "flower", "bush", "cow", "sheep", "fangBuilding", "fangWall", "fangGate"]
     },
     "buildingType": {
       "type": ["string", "null"],

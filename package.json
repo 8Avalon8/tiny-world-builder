@@ -8,7 +8,8 @@
     "build": "./publish.sh",
     "check": "node tools/check.js",
     "smoke": "node tools/smoke-static.js",
-    "test": "npm run check && npm run smoke"
+    "test": "npm run check && npm run smoke",
+    "test:unit": "node --test --test-reporter=spec 'tests/unit/**/*.test.js'"
   },
   "repository": {
     "type": "git",
@@ -21,6 +22,7 @@
     "url": "https://github.com/jasonkneen/tiny-world-builder/issues"
   },
   "homepage": "https://github.com/jasonkneen/tiny-world-builder#readme",
-  "dependencies": {},
-  "devDependencies": {}
+  "devDependencies": {
+    "@playwright/test": "^1.60.0"
+  }
 }

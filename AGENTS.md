@@ -1,7 +1,108 @@
-# AGENTS.md
+# CLAUDE.md / AGENTS.md
 
-Guidance for AI coding agents working in this repo. Read this before touching
+This file provides guidance to Claude Code (claude.ai/code) and other AI
+coding agents when working with code in this repository. `CLAUDE.md` is a
+symlink to `AGENTS.md` — keep them in lockstep. Read this before touching
 `tiny-world-builder.html`.
+
+## Commands
+
+```bash
+npm run dev          # tools/dev-server.js — serves http://localhost:3000/tiny-world-builder
+npm test             # check.js (inline JS parse + schema parity) + smoke-static.js
+npm run check        # just the static check (schema parity, asset paths)
+npm run smoke        # just the smoke contracts
+npm run test:unit    # node --test tests/unit (pure-logic suites; PR-3+ populates)
+npm run build        # publish.sh — generates dist/ for Vercel/Netlify
+
+# Playwright E2E (Chang'an ward sim regression):
+cd tests/e2e
+npx playwright install chromium   # one-time
+npx playwright test               # all spec files; reuses dev-server if up
+npx playwright test m5-agents     # single spec file by stem match
+npx playwright test --headed      # watch the browser
+TWB_BASE_URL=http://localhost:3001 npx playwright test   # custom port
+TWB_NO_WEBSERVER=1 npx playwright test                   # skip auto-spawn dev-server
+```
+
+`tools/check.js` does a **JSON semantic-equivalence** compare between
+`world.schema.json` and the embedded `WORLD_SCHEMA` block in
+`tiny-world-builder.html` (not byte equality — indentation/key order are
+free, but enums/required/structure must match). Any time you change schema,
+update both.
+
+### Dev-server / module loading notes
+
+- Always open the app over **HTTP** via `npm run dev`, never `file://`. Vendor
+  Three.js (`vendor/three/three.r128.min.js`, `vendor/three/GLTFLoader.r128.js`)
+  is **classic UMD** — it writes `window.THREE`. The ES module entry
+  `js/main.js` reads `window.THREE` from the global. Module scripts default
+  to `defer`, so the classic vendor `<script>` tags must come **before** the
+  `<script type="module" src="js/main.js">` tag in `tiny-world-builder.html`.
+- PR-2 transition: the inline `<script>` block in `tiny-world-builder.html`
+  still owns the live runtime. At the tail of `bootApp()`, the inline closure
+  calls `exposeRuntimeToModules()` which mirrors the engine + ward runtime
+  onto `window.__twb.{engine,ward}.runtime`. New code written as ES modules
+  (PR-3+ game/* and ward/ui-bridge code) reads from `window.__twb` instead of
+  reaching into the inline closures. Module-side modules in `js/engine/` and
+  `js/ward/` currently hold extracted **portable** slices (disposal, materials,
+  constants) that the inline runtime does not yet consume; the full inline
+  cutover is deferred to a later cleanup PR.
+- Tests (`tools/smoke-static.js`) verify both the inline contract and the
+  module entry are present.
+
+### Substrate modules (`js/game/`)
+
+PR-3 through PR-6 ported the pure-logic core of the chang_an_fang_demo into
+`js/game/`. These modules are **not yet wired** into the inline ward sim
+runtime — they're unit-test green (416 node tests) and browser-loadable
+(verified by `tests/e2e/m8-substrate.spec.js`), but the inline `simTick`
+keeps using the simpler fang state model.
+
+Module map (every file Apache-style portable, no DOM, no Three.js):
+
+```
+js/game/
+├── state.js           Game state singleton + resetState()
+├── time.js            DAY_START_MINUTE / getPhase / minuteToText
+├── walkmap.js         BFS findPath + nearestWalkable
+├── gates.js           Gate cells + curfew-aware walkability
+├── buildings.js       BUILDINGS_BY_ID + BUILDING_CATALOG (template + onComplete)
+├── plots.js           39 INITIAL_PLOTS + 4 QUADRANTS + 31 WASTELAND_INIT
+├── spatial.js         8-predicate DSL (in/inAny/within/adjacent/notAdjacent/size/...)
+├── projects.js        DEFERRED (depends on inline state/agents/buildings — needs adapter)
+├── petitions.js       12 petition kinds + PETITION_SPAWNERS
+├── promises.js        3-tier outcomes + spatial gates
+├── events.js          11 event templates + resolveEventChoice
+├── citizens.js        Housing capacity + weaver auto-hire + daily output
+├── wasteland.js       Direct + permission unlock state machines
+├── local-effects.js   Smoke/crowd/faith/market/prestige overlay engine
+├── difficulty.js      relaxed/standard/strict modes
+├── groups.js          Social-unit memory carriers for petitions/promises
+├── endgame.js         First-chapter goal evaluator
+├── day.js             simDay orchestrator (one-tick-per-game-day)
+├── balance{,-events,-noble,-petitions,-promises,-risk,-stance,-temple,-vendor,-wasteland}.js
+├── _agent-stubs.js    Noop placeholders for spawnPermanentForPlot / emitSignal
+├── utils.js           clamp/rand/choice/dist/lerp
+├── agents/
+│   ├── agent.js       Agent class + inferLifecycle
+│   ├── movement.js    setTargetCell/advancePath/lingerStep
+│   ├── needs.js       Thirst/fatigue increments + needWeight
+│   ├── tasks.js       Task stack + FSM + interruption + cooldowns
+│   ├── signals.js     emitSignal + tickSignals (5Hz throttle)
+│   ├── spatial-query.js queryRadius
+│   ├── spawn.js       ambient/initial/spawnVagrants/spawnCharacter
+│   ├── permanent.js   Permanent lifecycle + onPlotDamaged/Repaired
+│   ├── routines.js    transient/permanent/special dispatch
+│   ├── celebrities.js Daily roll + group memory carriers
+│   ├── phase-hooks.js broadcastPhaseChange
+│   └── characters/    index.js + demoNpc.js
+```
+
+Unit tests under `tests/unit/*.test.js` cover each module + cross-module
+scenarios (7-day full simulation runs). Run `npm run test:unit`. Wiring
+(adapter PR) is the next chapter — `js/ward/sim-adapter.js` will bridge
+`fang` ↔ `state.stats` + map plot (x, y) ↔ world (x, z).
 
 ## Project shape
 
@@ -97,6 +198,118 @@ or you will desync intent from rendering.
   swapped by `togglePerspective()` / `setCameraMode()`. `updateCamera()` writes
   to all camera projections/positions as needed.
 
+## Ward sim (Chang'an fang) life loop
+
+The ward sim layers an autonomous simulation on top of the editor. Two
+parallel data tracks, just like the editor's `world` / `cellMeshes`:
+
+```
+fang.buildings[id]        // intent  — economy + spec + residents[id...]
+fang.agents[id]           // intent  — role + path + state + home/work
+agentsGroup.children      // render  — Three.js Group per agent, scene-parented
+```
+
+Entry points (all on `window.__ward` for tests):
+
+- **`setWardMode('manage'|'editor')`** flips `fang.mode` + `body.mode-manage`.
+  The HUD, catalog, agents group, and ward toast only show in `manage`.
+- **`enterWardModeWithOnboarding()`** is what the welcome CTA + mode toggle
+  button call. Routes through the onboarding modal when `fang.buildings`
+  is empty (3 branches: generate new ward / empty start / cancel).
+- **`placeWardBuilding(type, x, z)`** is the single mutation path for
+  buildings. It spends cost, calls `addBuilding`, writes `kind=fangBuilding`
+  via `setCell`, and finally `spawnBuildingAgents(rec)`.
+- **`progressPromises()`** completes delayed builds; same final hook.
+- **`removeWardBuilding(id)`** calls `despawnBuildingAgents(rec)` BEFORE
+  clearing cells, so the resident ids attached to `rec.residents` don't
+  leak agents into the next mode switch.
+
+### Adding a new building
+
+1. Add an entry to `BUILDING_CATALOG` with `name`, `size`, `cost`, `factory`,
+   `output`, and **`spawns: [{ role, count }]`**. `[]` is fine for purely
+   decorative buildings (well/gate).
+2. Add the id to `BUILDING_CATALOG_ORDER`.
+3. The factory returns a Three.js Group; tile rendering is shared via
+   the `fangBuilding` kind in `renderCellObject`.
+4. Existing tests (`m2-build-place`, `m7-sim-life`) cover the spawn /
+   cost / footprint contract.
+
+### Adding a new agent role
+
+1. Add a color entry to `AGENT_COLORS`.
+2. Tweak `makeAgentMesh` if the role needs a hat/weapon accent.
+3. Extend `brainPickTarget(agent, phase)` with the role's daytime + night
+   behavior. Default fallback (`resident`) is wander+well+home.
+4. Hook visitor lifecycle (`_visitor`, `_heading_out`) only if the role is
+   a pilgrim-style transient.
+
+### Sim cadence
+
+Two independent ticks, on purpose:
+
+- **Locomotion — every animate frame.** `animate()` calls
+  `agentStep(dt, agent)` for every agent in `fang.agents` while
+  `fang.mode === 'manage'`. That keeps mesh motion a smooth tween along
+  the path (heading easing + a tiny walk-bob in `agentStep`) instead of
+  teleporting on the 200ms gameplay cadence. Do **not** call `agentStep`
+  from inside `simTick` — it would advance fx/fz twice and double agent
+  speed.
+- **Gameplay — `simTick(dt)` at ~5Hz** (accumulated dt clamped via
+  `simAccum`). Per game-minute it calls:
+  - `assignIdleTargets(currentMinute)` — idle agents get a fresh path via
+    `bfsPath`. Throttled per-agent by `WARD_BRAIN.reassignEveryMinutes`.
+  - `rollVisitorSpawn(currentMinute)` — probabilistic pilgrim arrival
+    proportional to `(innCount + templeCount)`.
+  - `reapVisitors()` — pilgrims past `leaveDay` route to the nearest gate
+    and despawn on arrival.
+
+Walkable-mask cache lives in `walkableMaskCache`. It is invalidated by
+`setCell` on terrain/kind changes AND by `wardListeners` on building add/
+remove + curfew toggle + policy + fang-hydrated. **Never** read
+`walkableMaskCache` directly — go through `buildWalkable()` or `bfsPath`.
+
+**Visibility-safe accumulator (don't break this).** `simAccum` adds
+`Math.min(dt, 0.05)` per animate frame, *not* `(t - lastSimTick)`. When the
+tab goes background, naive wall-clock diffing would fast-forward several
+game-days on resume. The `visibilitychange` listener also resets
+`simAccum = 0`. If you ever rewrite the sim loop, keep both protections.
+
+### Three places that must agree on `kind` / `v`
+
+When you add a new `world.kind` value (or bump schema), update **all
+three** or runtime `validateWorld` will reject AI-generated / imported
+worlds even when `npm test` is green:
+
+1. `world.schema.json` — `kind` enum + (if bumping) `v` enum + top-level
+   `properties` (`additionalProperties: false` is enforced, so any new
+   top-level field must be declared, e.g. `fang`).
+2. Embedded `WORLD_SCHEMA` in `tiny-world-builder.html` — kept JSON-
+   semantically equivalent by `tools/check.js`.
+3. Runtime `validateWorld` kind whitelist Set (`okKind`) — the **actual**
+   gate for AI / import paths; the schemas are advisory.
+
+### Test API surface
+
+The ward sim deliberately exposes its internals on `window.__ward` for
+Playwright. Used heavily in `tests/e2e/*.spec.js`:
+
+```
+window.__ward.{setWardMode, placeWardBuilding, removeWardBuilding,
+  spawnAgent, despawnAgent, agentStep, bfsPath, buildWalkable,
+  invalidateWalkable, agentRoleColor, AGENT_COLORS,
+  BUILDING_CATALOG, BUILDING_CATALOG_ORDER,
+  fang, agentsGroup, refreshAgentsVisibility,
+  simTick, simDayRollover, applyDayPhase, dayPhaseFromMinute,
+  forceEvent, applyEventChoice, rollEvents, EVENT_TEMPLATES,
+  setPolicy, serializeFang, hydrateFang,
+  clearWorldForTest, generateWardLayout, ...}
+```
+
+Also `window.__cropDusterRoot` for the manage-mode gating test, and
+`window.__enterWardModeWithOnboarding` for the welcome CTA test. Treat
+this surface as a contract — tests will break if names move.
+
 ## Performance budget
 
 - Home grid starts at `8x8` but settings can expose up to `48x48`. Per-frame
@@ -125,3 +338,13 @@ or you will desync intent from rendering.
 - [ ] Placing/erasing a fence updates its neighbors' geometry.
 - [ ] Clusters of houses still render as L/T/+/square where appropriate.
 - [ ] Smoke spawns from house chimneys after they finish landing.
+- [ ] Welcome modal shows "进入长安坊" CTA; clicking it opens the ward
+      onboarding modal.
+- [ ] Entering ward mode with empty `fang.buildings` shows the onboarding
+      modal; "生成新坊" creates walls/gates/streets/well and spawns at
+      least 3 residents + 1 guard at the gates.
+- [ ] In manage mode, idle agents pick new wander targets every few in-game
+      minutes; pop stat (人 N/cap) in `#ward-hud` updates as residents
+      come and go.
+- [ ] Placing a `ciDengTemple` + waiting a few seconds spawns at least one
+      pilgrim at a gate (toast shows "香客抵达").

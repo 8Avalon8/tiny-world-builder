@@ -14,7 +14,10 @@ function fail(message) {
   process.exit(1);
 }
 
-const scriptMatch = html.match(/<script>([\s\S]*?)<\/script>\s*<\/body>/);
+// The inline app script is the only attribute-less `<script>` block; all
+// other tags carry attributes (`type=`, `src=`, etc). Anchor on that uniquely
+// so the regex isn't disturbed by the ES module loader tag we add for PR-2.
+const scriptMatch = html.match(/<script>([\s\S]*?)<\/script>/);
 if (!scriptMatch) fail('inline app script missing');
 try {
   new Function(scriptMatch[1]);
@@ -30,7 +33,12 @@ try {
 }
 
 const schemaStart = html.indexOf('  const WORLD_SCHEMA = ');
-const schemaEnd = html.indexOf('\n\n  // -------- AI generation --------', schemaStart);
+// Look for `};` followed by a blank line and the next section comment.
+// This survives section deletions in PR-1; the old marker hard-coded the
+// "AI generation" header which has since been removed (PR-1 G8).
+const schemaEndPattern = /\};\n\n {2}\/\/ -------- /;
+const tailSearch = schemaStart >= 0 ? html.slice(schemaStart).search(schemaEndPattern) : -1;
+const schemaEnd = tailSearch >= 0 ? schemaStart + tailSearch + 2 : -1;
 if (schemaStart < 0 || schemaEnd < 0) fail('embedded WORLD_SCHEMA block missing');
 let embeddedSource = html.slice(schemaStart + '  const WORLD_SCHEMA = '.length, schemaEnd).trim();
 if (embeddedSource.endsWith(';')) embeddedSource = embeddedSource.slice(0, -1);
