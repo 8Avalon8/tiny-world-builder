@@ -7,6 +7,7 @@
 // step (PR-2 Step 19) replaces it.
 
 import { safeDisposeGeometry, createDisposeGroup } from './engine/disposal.js';
+import { createMaterials } from './engine/materials.js';
 
 if (!window.THREE) {
   console.error('[twb] vendor THREE missing — vendor/three/three.r128.min.js must load before js/main.js');
@@ -14,3 +15,4 @@ if (!window.THREE) {
 
 window.__twb = window.__twb || { engine: {}, ward: {}, game: {}, ui: {} };
 window.__twb.engine.disposal = { safeDisposeGeometry, createDisposeGroup };
+window.__twb.engine.createMaterials = createMaterials;
