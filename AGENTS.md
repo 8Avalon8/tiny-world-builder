@@ -35,14 +35,21 @@ update both.
 
 - Always open the app over **HTTP** via `npm run dev`, never `file://`. Vendor
   Three.js (`vendor/three/three.r128.min.js`, `vendor/three/GLTFLoader.r128.js`)
-  is **classic UMD** — it writes `window.THREE`. PR-2 introduces ES modules
-  under `js/` that read `window.THREE` from the global. Module scripts default
-  to `defer`, so the classic vendor `<script>` tags must come **before** any
-  `<script type="module">` tag in `index.html` for the global to exist when
-  modules run.
-- The single-file source-of-truth is `tiny-world-builder.html` until PR-2.
-  After PR-2, the runtime entry becomes `js/main.js`; `tools/smoke-static.js`,
-  `tools/check.js`, and `tests/e2e/m0-palette.spec.js` will follow.
+  is **classic UMD** — it writes `window.THREE`. The ES module entry
+  `js/main.js` reads `window.THREE` from the global. Module scripts default
+  to `defer`, so the classic vendor `<script>` tags must come **before** the
+  `<script type="module" src="js/main.js">` tag in `tiny-world-builder.html`.
+- PR-2 transition: the inline `<script>` block in `tiny-world-builder.html`
+  still owns the live runtime. At the tail of `bootApp()`, the inline closure
+  calls `exposeRuntimeToModules()` which mirrors the engine + ward runtime
+  onto `window.__twb.{engine,ward}.runtime`. New code written as ES modules
+  (PR-3+ game/* and ward/ui-bridge code) reads from `window.__twb` instead of
+  reaching into the inline closures. Module-side modules in `js/engine/` and
+  `js/ward/` currently hold extracted **portable** slices (disposal, materials,
+  constants) that the inline runtime does not yet consume; the full inline
+  cutover is deferred to a later cleanup PR.
+- Tests (`tools/smoke-static.js`) verify both the inline contract and the
+  module entry are present.
 
 ## Project shape
 

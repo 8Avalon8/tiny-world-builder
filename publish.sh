@@ -75,6 +75,21 @@ if [[ -d vendor ]]; then
   ' sh {} +)
 fi
 
+# PR-2: ES module entry tree. js/main.js + nested engine/ward/game/ui modules
+# are loaded from the deployed HTML via <script type="module">. Both static
+# hosts (Netlify, Vercel) serve .js with the correct text/javascript MIME by
+# default, so no header tweaks are required — we just need the tree present
+# at the deploy root.
+if [[ -d js ]]; then
+  mkdir -p "$DIST/js"
+  (cd js && find . -type f ! -name '.DS_Store' -exec sh -c '
+    for f do
+      mkdir -p "../dist/js/$(dirname "$f")"
+      cp "$f" "../dist/js/$f"
+    done
+  ' sh {} +)
+fi
+
 # Sounds — music + foley referenced by the app via sounds/<name>.mp3.
 # The page expects this exact directory at the deploy root.
 if [[ -d sounds ]]; then

@@ -50,4 +50,29 @@ for (const asset of [
   if (!fs.existsSync(path.join(root, asset))) fail('missing local asset ' + asset);
 }
 
+// PR-2: ES module entry exists and HTML wires it up after the inline block.
+const mainJs = path.join(root, 'js/main.js');
+if (!fs.existsSync(mainJs)) fail('missing js/main.js entry');
+const mainText = fs.readFileSync(mainJs, 'utf8');
+for (const [needle, label] of [
+  ["from './engine/disposal.js'", 'engine/disposal import'],
+  ["from './engine/materials.js'", 'engine/materials import'],
+  ["from './ward/constants.js'", 'ward/constants import'],
+]) {
+  if (!mainText.includes(needle)) fail('js/main.js missing ' + label);
+}
+if (!html.includes('<script type="module" src="js/main.js"></script>')) {
+  fail('tiny-world-builder.html missing ES module loader tag for js/main.js');
+}
+if (!html.includes('function exposeRuntimeToModules(')) {
+  fail('inline bootApp does not hand off runtime to window.__twb');
+}
+for (const moduleFile of [
+  'js/engine/disposal.js',
+  'js/engine/materials.js',
+  'js/ward/constants.js',
+]) {
+  if (!fs.existsSync(path.join(root, moduleFile))) fail('missing ' + moduleFile);
+}
+
 console.log('smoke ok');
