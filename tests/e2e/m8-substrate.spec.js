@@ -87,3 +87,32 @@ test('M8 inline runtime hands off via window.__twb', async ({ page }) => {
   expect(out.wardConstantsKeys).toContain('BUILDING_CATALOG_ORDER');
   expect(out.wardConstantsKeys).toContain('BALANCE');
 });
+
+test('M8 sim-adapter bootstraps + bridge stays disabled by default', async ({ page }) => {
+  // wait for the deferred module to attach the adapter surface
+  await page.waitForFunction(() => !!(window.__twb && window.__twb.ward && window.__twb.ward.adapter));
+  const out = await page.evaluate(async () => {
+    const a = window.__twb.ward.adapter;
+    const home = a.plotToWorld({ x: 7, y: 8 });
+    const back = a.worldToPlot(home.x, home.z);
+    // initSubstrateState should fully populate state.plots (39 entries).
+    const { state } = await import('/js/game/state.js');
+    a.initSubstrateState({ difficulty: 'standard' });
+    return {
+      version: a.version,
+      grid: a.SUBSTRATE_GRID,
+      bridgeOff: a.enableSimBridge === false,
+      coordRoundtrip: home.x === 7 && home.z === 8 && back.x === 7 && back.y === 8,
+      plotsLen: state.plots.length,
+      day: state.day,
+      starterMoney: state.stats.money,
+      bridgeReady: a.isBridgeReady(window.__ward.fang),
+    };
+  });
+  expect(out.bridgeOff).toBe(true);
+  expect(out.coordRoundtrip).toBe(true);
+  expect(out.plotsLen).toBe(39);
+  expect(out.day).toBe(1);
+  expect(out.starterMoney).toBeGreaterThan(0);
+  expect(out.bridgeReady).toBe(true);
+});

@@ -12,6 +12,10 @@ import {
   BUILDING_CATALOG_ORDER, BUILDING_CATALOG_META,
   AGENT_COLORS, BALANCE, WARD_BRAIN,
 } from './ward/constants.js';
+import {
+  plotToWorld, worldToPlot, initSubstrateState, isBridgeReady,
+  SUBSTRATE_GRID, ADAPTER_VERSION,
+} from './ward/sim-adapter.js';
 
 if (!window.THREE) {
   console.error('[twb] vendor THREE missing — vendor/three/three.r128.min.js must load before js/main.js');
@@ -23,4 +27,13 @@ window.__twb.engine.createMaterials = createMaterials;
 window.__twb.ward.constants = {
   BUILDING_CATALOG_ORDER, BUILDING_CATALOG_META,
   AGENT_COLORS, BALANCE, WARD_BRAIN,
+};
+window.__twb.ward.adapter = {
+  version: ADAPTER_VERSION,
+  SUBSTRATE_GRID,
+  plotToWorld, worldToPlot, initSubstrateState, isBridgeReady,
+  // The simBridge flag stays off until the inline runtime knows how to
+  // consume substrate state. Toggle from devtools to experiment:
+  //   window.__twb.ward.adapter.enableSimBridge = true
+  enableSimBridge: false,
 };
