@@ -14,7 +14,10 @@ function fail(message) {
   process.exit(1);
 }
 
-const scriptMatch = html.match(/<script>([\s\S]*?)<\/script>\s*<\/body>/);
+// The inline app script is the only attribute-less `<script>` block; all
+// other tags carry attributes (`type=`, `src=`, etc). Anchor on that uniquely
+// so the regex isn't disturbed by the ES module loader tag we add for PR-2.
+const scriptMatch = html.match(/<script>([\s\S]*?)<\/script>/);
 if (!scriptMatch) fail('inline app script missing');
 try {
   new Function(scriptMatch[1]);
