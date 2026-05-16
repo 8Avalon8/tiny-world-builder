@@ -13018,10 +13018,44 @@
     ensureGhostBoardsAroundTarget();
     onResize();
     requestAnimationFrame(animate);
+    exposeRuntimeToModules();
   }
 
-
-
+  // PR-2 transition: hand the inline runtime to js/main.js. ES module code
+  // (PR-3+ logic, future ward UI panels) reaches engine + ward state via
+  // window.__twb instead of touching the inline closures directly. The
+  // inline block remains the owner; this is just a one-way handoff so the
+  // module side can consume what the inline side already constructed.
+  function exposeRuntimeToModules() {
+    const host = (window.__twb = window.__twb || { engine: {}, ward: {}, game: {}, ui: {} });
+    host.engine.runtime = {
+      THREE: window.THREE,
+      scene, renderer, camera, orthoCam, softCam, persCam,
+      worldGroup, agentsGroup,
+      M,
+      world, cellMeshes, GRID,
+      setCell, renderCellObject, makeTile,
+      disposeGroup, safeDisposeGeometry,
+      dropAnims, squashAnims, rippleAnims,
+    };
+    host.ward.runtime = {
+      fang, wardListeners,
+      emitWardChanged, setPolicy,
+      BUILDING_CATALOG, BUILDING_CATALOG_ORDER,
+      AGENT_COLORS, BALANCE, WARD_BRAIN,
+      placeWardBuilding, removeWardBuilding,
+      spawnAgent, despawnAgent, agentStep,
+      bfsPath, buildWalkable, invalidateWalkable,
+      simTick, simDayRollover, applyDayPhase, dayPhaseFromMinute,
+      forceEvent, applyEventChoice, rollEvents, EVENT_TEMPLATES,
+      serializeFang, hydrateFang,
+      generateWardLayout,
+      setWardMode, refreshAgentsVisibility,
+    };
+    // clearWorldForTest lives on window.__ward (assigned imperatively above);
+    // intentionally not re-exported here — module code that needs it should
+    // call window.__ward.clearWorldForTest directly.
+  }
 
 
   bootApp();

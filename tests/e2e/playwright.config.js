@@ -7,7 +7,13 @@ module.exports = defineConfig({
   testDir: '.',
   timeout: 30_000,
   retries: 0,
-  fullyParallel: false,
+  // Tests are independent: each `beforeEach` calls `openApp` which resets
+  // localStorage and reloads the page. dev-server is a stateless static
+  // file host so parallel workers don't contend. Workers is auto-tuned
+  // by Playwright based on CPU; we cap so a single machine isn't slammed
+  // by 10+ Chromium instances.
+  fullyParallel: true,
+  workers: process.env.CI ? 2 : 4,
   reporter: [['list'], ['html', { open: 'never', outputFolder: '../../playwright-report' }]],
   use: {
     baseURL: process.env.TWB_BASE_URL || 'http://localhost:3000',

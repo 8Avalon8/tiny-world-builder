@@ -13,7 +13,12 @@ async function openApp(page, opts = {}) {
     } catch (_) {}
   }, { noticeId: WELCOME_NOTICE_ID });
   await page.goto(opts.path || '/tiny-world-builder');
-  await page.waitForLoadState('networkidle', { timeout: 15_000 });
+  // networkidle would wait ~500ms idle on every test — too slow for an
+  // 85-spec suite. `domcontentloaded` is enough since the inline script is
+  // sync and __ward is exposed inside it. Module loader is deferred but
+  // not awaited here; tests that need its bindings should look for them
+  // on window.__twb explicitly.
+  await page.waitForLoadState('domcontentloaded', { timeout: 10_000 });
   // Wait for the boot to expose the ward test surface.
   await page.waitForFunction(() => !!window.__ward, { timeout: 10_000 });
 }
